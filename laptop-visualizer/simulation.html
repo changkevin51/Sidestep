@@ -1,0 +1,2035 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>V2V Cooperative Safety Console</title>
+  <style>
+    :root {
+      --bg: #071018;
+      --panel: #0b1620;
+      --panel-raised: #101f2b;
+      --panel-soft: #0d1a24;
+      --line: rgba(152, 187, 207, 0.14);
+      --line-strong: rgba(152, 187, 207, 0.24);
+      --text: #edf7fb;
+      --muted: #8ea5b3;
+      --cyan: #3be0d0;
+      --cyan-soft: rgba(59, 224, 208, 0.14);
+      --blue: #50a7ff;
+      --orange: #ffaf5c;
+      --red: #ff5d68;
+      --green: #63e69c;
+      --yellow: #ffd166;
+      --shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+      --radius: 16px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      min-height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      overflow: hidden;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button {
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .app-shell {
+      display: grid;
+      grid-template-columns: minmax(318px, 368px) minmax(0, 1fr);
+      width: 100vw;
+      height: 100vh;
+      background:
+        radial-gradient(circle at 78% 15%, rgba(44, 119, 145, 0.09), transparent 34%),
+        var(--bg);
+    }
+
+    .sidebar {
+      position: relative;
+      z-index: 4;
+      overflow-y: auto;
+      padding: 24px 22px 28px;
+      border-right: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(13, 27, 38, 0.98), rgba(8, 18, 26, 0.98));
+      scrollbar-color: rgba(142, 165, 179, 0.34) transparent;
+      scrollbar-width: thin;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .brand-mark {
+      position: relative;
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      flex: 0 0 auto;
+      overflow: hidden;
+      border: 1px solid rgba(59, 224, 208, 0.34);
+      border-radius: 13px;
+      background: linear-gradient(145deg, rgba(59, 224, 208, 0.2), rgba(80, 167, 255, 0.08));
+      box-shadow: 0 0 24px rgba(59, 224, 208, 0.08);
+    }
+
+    .brand-mark::before,
+    .brand-mark::after {
+      content: "";
+      position: absolute;
+      width: 6px;
+      height: 24px;
+      border: 2px solid var(--cyan);
+      border-top: 0;
+      border-bottom: 0;
+      border-radius: 5px;
+      transform: rotate(24deg);
+    }
+
+    .brand-mark::after {
+      transform: rotate(-24deg);
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 720;
+      letter-spacing: 0.02em;
+    }
+
+    .brand p {
+      margin: 3px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .connection-strip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 22px;
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(7, 16, 24, 0.48);
+    }
+
+    .connection-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .connection-label strong {
+      overflow: hidden;
+      color: var(--text);
+      font-weight: 650;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .connection-dot {
+      width: 8px;
+      height: 8px;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      background: var(--red);
+      box-shadow: 0 0 0 4px rgba(255, 93, 104, 0.1);
+    }
+
+    .connection-dot.online {
+      background: var(--green);
+      box-shadow: 0 0 0 4px rgba(99, 230, 156, 0.1), 0 0 12px rgba(99, 230, 156, 0.4);
+    }
+
+    .connection-dot.connecting {
+      background: var(--yellow);
+      box-shadow: 0 0 0 4px rgba(255, 209, 102, 0.1);
+      animation: breathe 1.2s ease-in-out infinite;
+    }
+
+    .rx-rate {
+      flex: 0 0 auto;
+      color: var(--cyan);
+      font: 600 11px ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    .section-heading {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin: 19px 0 10px;
+    }
+
+    .section-heading h2 {
+      margin: 0;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+
+    .section-heading span {
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .car-config {
+      margin-bottom: 12px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(14, 29, 40, 0.66);
+      box-shadow: inset 0 1px rgba(255, 255, 255, 0.015);
+    }
+
+    .car-config-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .car-config-title strong {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      letter-spacing: 0.03em;
+    }
+
+    .car-swatch {
+      width: 9px;
+      height: 9px;
+      border-radius: 3px;
+      background: var(--cyan);
+      box-shadow: 0 0 12px rgba(59, 224, 208, 0.42);
+    }
+
+    .car-swatch.car-two {
+      background: var(--orange);
+      box-shadow: 0 0 12px rgba(255, 175, 92, 0.42);
+    }
+
+    .car-id {
+      color: var(--muted);
+      font: 600 10px ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    .input-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .field {
+      min-width: 0;
+    }
+
+    .field.full {
+      grid-column: 1 / -1;
+    }
+
+    .field label {
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+      margin: 0 0 5px 1px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .field label span {
+      opacity: 0.72;
+      font-weight: 500;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+
+    input[type="number"] {
+      width: 100%;
+      height: 36px;
+      padding: 0 9px;
+      border: 1px solid var(--line-strong);
+      border-radius: 9px;
+      outline: none;
+      background: rgba(5, 13, 19, 0.72);
+      color: var(--text);
+      font: 500 12px ui-monospace, SFMono-Regular, Consolas, monospace;
+      transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+    }
+
+    input[type="number"]:hover {
+      border-color: rgba(142, 165, 179, 0.42);
+    }
+
+    input[type="number"]:focus {
+      border-color: rgba(59, 224, 208, 0.68);
+      background: rgba(5, 13, 19, 0.96);
+      box-shadow: 0 0 0 3px rgba(59, 224, 208, 0.09);
+    }
+
+    input[type="number"].invalid {
+      border-color: var(--red);
+      box-shadow: 0 0 0 3px rgba(255, 93, 104, 0.08);
+    }
+
+    .form-error {
+      display: none;
+      margin: 10px 1px 0;
+      color: #ff9da4;
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .form-error.visible {
+      display: block;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 84px 72px;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 40px;
+      padding: 0 13px;
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      cursor: pointer;
+      background: rgba(17, 34, 46, 0.76);
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 680;
+      letter-spacing: 0.03em;
+      transition: transform 120ms ease, border-color 120ms ease, background 120ms ease, opacity 120ms ease;
+    }
+
+    .button:hover:not(:disabled) {
+      border-color: rgba(142, 165, 179, 0.5);
+      background: rgba(24, 46, 61, 0.9);
+      transform: translateY(-1px);
+    }
+
+    .button:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    .button:focus-visible {
+      outline: 2px solid var(--cyan);
+      outline-offset: 2px;
+    }
+
+    .button:disabled {
+      cursor: not-allowed;
+      opacity: 0.38;
+    }
+
+    .button.primary {
+      border-color: rgba(59, 224, 208, 0.48);
+      background: linear-gradient(135deg, rgba(27, 176, 164, 0.94), rgba(29, 137, 151, 0.94));
+      color: #021413;
+      box-shadow: 0 8px 22px rgba(24, 177, 164, 0.16);
+    }
+
+    .button.primary:hover:not(:disabled) {
+      border-color: rgba(93, 255, 240, 0.8);
+      background: linear-gradient(135deg, rgba(50, 215, 201, 0.98), rgba(44, 167, 181, 0.98));
+    }
+
+    .helper-copy {
+      margin: 9px 1px 0;
+      color: #718895;
+      font-size: 10px;
+      line-height: 1.5;
+    }
+
+    .vehicle-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .vehicle-row {
+      display: grid;
+      grid-template-columns: 8px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 9px;
+      min-height: 43px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(7, 16, 24, 0.42);
+    }
+
+    .vehicle-row .mini-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--cyan);
+    }
+
+    .vehicle-row .identity {
+      min-width: 0;
+    }
+
+    .vehicle-row .identity strong {
+      display: block;
+      overflow: hidden;
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .vehicle-row .identity span,
+    .vehicle-row .metrics span {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 9px;
+      white-space: nowrap;
+    }
+
+    .vehicle-row .metrics {
+      text-align: right;
+    }
+
+    .vehicle-row .metrics strong {
+      color: var(--cyan);
+      font: 650 11px ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    .vehicle-empty {
+      padding: 12px;
+      border: 1px dashed var(--line-strong);
+      border-radius: 10px;
+      color: var(--muted);
+      font-size: 11px;
+      text-align: center;
+    }
+
+    .activity {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(5, 13, 19, 0.54);
+    }
+
+    .activity-row {
+      display: grid;
+      grid-template-columns: 49px minmax(0, 1fr);
+      gap: 8px;
+      padding: 8px 10px;
+      border-top: 1px solid rgba(152, 187, 207, 0.08);
+      font: 500 9px ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    .activity-row:first-child {
+      border-top: 0;
+    }
+
+    .activity-row time {
+      color: #607887;
+    }
+
+    .activity-row span {
+      overflow: hidden;
+      color: #9eb3bf;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .workspace {
+      position: relative;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .topbar {
+      position: relative;
+      z-index: 3;
+      display: grid;
+      grid-template-columns: minmax(170px, 1.25fr) repeat(4, minmax(112px, 0.75fr));
+      gap: 10px;
+      padding: 15px 18px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(7, 16, 24, 0.84);
+      backdrop-filter: blur(12px);
+    }
+
+    .headline-card,
+    .metric-card {
+      min-width: 0;
+      min-height: 60px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(15, 30, 41, 0.62);
+    }
+
+    .headline-card {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+    }
+
+    .stream-icon {
+      position: relative;
+      width: 34px;
+      height: 34px;
+      flex: 0 0 auto;
+      border: 1px solid rgba(59, 224, 208, 0.24);
+      border-radius: 50%;
+    }
+
+    .stream-icon::before {
+      content: "";
+      position: absolute;
+      inset: 8px;
+      border-radius: 50%;
+      background: #49616f;
+      transition: background 160ms ease, box-shadow 160ms ease;
+    }
+
+    .stream-icon.live::before {
+      background: var(--cyan);
+      box-shadow: 0 0 14px rgba(59, 224, 208, 0.55);
+      animation: breathe 1.2s ease-in-out infinite;
+    }
+
+    .stream-icon.paused::before {
+      background: var(--yellow);
+    }
+
+    .headline-card small,
+    .metric-card small {
+      display: block;
+      overflow: hidden;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 9px;
+      font-weight: 650;
+      letter-spacing: 0.1em;
+      text-overflow: ellipsis;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .headline-card strong {
+      display: block;
+      font-size: 13px;
+    }
+
+    .headline-card span {
+      display: block;
+      overflow: hidden;
+      max-width: 260px;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 10px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .metric-card strong {
+      display: block;
+      overflow: hidden;
+      color: var(--text);
+      font-size: 15px;
+      font-weight: 680;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .metric-card strong.accent {
+      color: var(--cyan);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    .metric-card strong.warning {
+      color: var(--yellow);
+    }
+
+    .metric-card strong.danger {
+      color: var(--red);
+    }
+
+    .metric-card strong.safe {
+      color: var(--green);
+    }
+
+    .canvas-wrap {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 50% 42%, rgba(17, 48, 63, 0.24), transparent 54%),
+        #071018;
+    }
+
+    #simulationCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .map-badge {
+      position: absolute;
+      top: 17px;
+      left: 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 9px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: rgba(5, 13, 19, 0.72);
+      color: var(--muted);
+      font: 600 9px ui-monospace, SFMono-Regular, Consolas, monospace;
+      pointer-events: none;
+      backdrop-filter: blur(8px);
+    }
+
+    .map-badge i {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--cyan);
+      box-shadow: 0 0 9px rgba(59, 224, 208, 0.5);
+    }
+
+    .legend {
+      position: absolute;
+      right: 18px;
+      bottom: 17px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 7px;
+      max-width: calc(100% - 36px);
+      pointer-events: none;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(5, 13, 19, 0.72);
+      color: var(--muted);
+      font-size: 9px;
+      backdrop-filter: blur(8px);
+    }
+
+    .legend-item i {
+      width: 7px;
+      height: 7px;
+      border-radius: 2px;
+      background: var(--cyan);
+    }
+
+    .legend-item:nth-child(2) i {
+      background: var(--orange);
+    }
+
+    .legend-item:nth-child(3) i {
+      background: var(--red);
+    }
+
+    .empty-overlay {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: min(380px, calc(100% - 50px));
+      padding: 23px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(8, 19, 27, 0.78);
+      box-shadow: var(--shadow);
+      text-align: center;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      backdrop-filter: blur(14px);
+      transition: opacity 180ms ease, visibility 180ms ease;
+    }
+
+    .empty-overlay.hidden {
+      visibility: hidden;
+      opacity: 0;
+    }
+
+    .empty-overlay .radar {
+      position: relative;
+      width: 52px;
+      height: 52px;
+      margin: 0 auto 13px;
+      border: 1px solid rgba(59, 224, 208, 0.3);
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(59, 224, 208, 0.16) 0 2px, transparent 3px);
+    }
+
+    .empty-overlay .radar::before,
+    .empty-overlay .radar::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      background: rgba(59, 224, 208, 0.24);
+      transform: translate(-50%, -50%);
+    }
+
+    .empty-overlay .radar::before {
+      width: 100%;
+      height: 1px;
+    }
+
+    .empty-overlay .radar::after {
+      width: 1px;
+      height: 100%;
+    }
+
+    .empty-overlay strong {
+      display: block;
+      font-size: 14px;
+    }
+
+    .empty-overlay p {
+      margin: 7px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.55;
+    }
+
+    @keyframes breathe {
+      0%, 100% { opacity: 0.68; transform: scale(0.9); }
+      50% { opacity: 1; transform: scale(1); }
+    }
+
+    @media (max-width: 1080px) {
+      .topbar {
+        grid-template-columns: minmax(190px, 1.4fr) repeat(2, minmax(118px, 0.7fr));
+      }
+
+      .metric-card:nth-child(4),
+      .metric-card:nth-child(5) {
+        display: none;
+      }
+    }
+
+    @media (max-width: 760px) {
+      body {
+        overflow: auto;
+      }
+
+      .app-shell {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto minmax(620px, 78vh);
+        width: 100%;
+        height: auto;
+        min-height: 100vh;
+      }
+
+      .sidebar {
+        overflow: visible;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .workspace {
+        min-height: 620px;
+      }
+
+      .topbar {
+        grid-template-columns: minmax(0, 1fr) repeat(2, minmax(95px, 0.6fr));
+        padding: 10px;
+      }
+
+      .headline-card,
+      .metric-card {
+        min-height: 56px;
+        padding: 9px;
+      }
+
+      .headline-card span,
+      .stream-icon {
+        display: none;
+      }
+    }
+
+    @media (max-width: 460px) {
+      .sidebar {
+        padding: 19px 15px 24px;
+      }
+
+      .topbar {
+        grid-template-columns: minmax(0, 1fr) 92px;
+      }
+
+      .metric-card:nth-child(3) {
+        display: none;
+      }
+
+      .controls {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .button.primary {
+        grid-column: 1 / -1;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app-shell">
+    <aside class="sidebar" aria-label="Simulation configuration">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"></div>
+        <div>
+          <h1>Cooperative Safety</h1>
+          <p>V2V field console</p>
+        </div>
+      </div>
+
+      <div class="connection-strip" aria-live="polite">
+        <div class="connection-label">
+          <i id="connectionDot" class="connection-dot connecting" aria-hidden="true"></i>
+          <span>Bridge <strong id="connectionText">Connecting</strong></span>
+        </div>
+        <span id="rxRate" class="rx-rate">0 pkt/s</span>
+      </div>
+
+      <form id="configForm" novalidate>
+        <div class="section-heading">
+          <h2>Scenario setup</h2>
+          <span>Decimal GPS</span>
+        </div>
+
+        <section class="car-config" aria-labelledby="car1-title">
+          <div class="car-config-title">
+            <strong id="car1-title"><i class="car-swatch" aria-hidden="true"></i> Vehicle 1</strong>
+            <span class="car-id">CAR1</span>
+          </div>
+          <div class="input-grid">
+            <div class="field full">
+              <label for="car1-lat">Latitude <span>degrees</span></label>
+              <input id="car1-lat" data-car="CAR1" data-field="latitude" type="number" value="43.653200" min="-90" max="90" step="0.000001" required>
+            </div>
+            <div class="field full">
+              <label for="car1-lon">Longitude <span>degrees</span></label>
+              <input id="car1-lon" data-car="CAR1" data-field="longitude" type="number" value="-79.383500" min="-180" max="180" step="0.000001" required>
+            </div>
+            <div class="field">
+              <label for="car1-heading">Heading <span>°</span></label>
+              <input id="car1-heading" data-car="CAR1" data-field="heading" type="number" value="0" min="0" max="359.999" step="0.1" required>
+            </div>
+            <div class="field">
+              <label for="car1-speed">Speed <span>m/s</span></label>
+              <input id="car1-speed" data-car="CAR1" data-field="speed" type="number" value="10" min="0" max="80" step="0.1" required>
+            </div>
+            <div class="field">
+              <label for="car1-width">Width <span>m</span></label>
+              <input id="car1-width" data-car="CAR1" data-field="width" type="number" value="1.9" min="0.5" max="4" step="0.1" required>
+            </div>
+            <div class="field">
+              <label for="car1-length">Length <span>m</span></label>
+              <input id="car1-length" data-car="CAR1" data-field="length" type="number" value="4.6" min="1" max="20" step="0.1" required>
+            </div>
+          </div>
+        </section>
+
+        <section class="car-config" aria-labelledby="car2-title">
+          <div class="car-config-title">
+            <strong id="car2-title"><i class="car-swatch car-two" aria-hidden="true"></i> Vehicle 2</strong>
+            <span class="car-id">CAR2</span>
+          </div>
+          <div class="input-grid">
+            <div class="field full">
+              <label for="car2-lat">Latitude <span>degrees</span></label>
+              <input id="car2-lat" data-car="CAR2" data-field="latitude" type="number" value="43.653450" min="-90" max="90" step="0.000001" required>
+            </div>
+            <div class="field full">
+              <label for="car2-lon">Longitude <span>degrees</span></label>
+              <input id="car2-lon" data-car="CAR2" data-field="longitude" type="number" value="-79.383850" min="-180" max="180" step="0.000001" required>
+            </div>
+            <div class="field">
+              <label for="car2-heading">Heading <span>°</span></label>
+              <input id="car2-heading" data-car="CAR2" data-field="heading" type="number" value="90" min="0" max="359.999" step="0.1" required>
+            </div>
+            <div class="field">
+              <label for="car2-speed">Speed <span>m/s</span></label>
+              <input id="car2-speed" data-car="CAR2" data-field="speed" type="number" value="10" min="0" max="80" step="0.1" required>
+            </div>
+            <div class="field">
+              <label for="car2-width">Width <span>m</span></label>
+              <input id="car2-width" data-car="CAR2" data-field="width" type="number" value="1.9" min="0.5" max="4" step="0.1" required>
+            </div>
+            <div class="field">
+              <label for="car2-length">Length <span>m</span></label>
+              <input id="car2-length" data-car="CAR2" data-field="length" type="number" value="4.6" min="1" max="20" step="0.1" required>
+            </div>
+          </div>
+        </section>
+
+        <p id="formError" class="form-error" role="alert"></p>
+
+        <div class="controls">
+          <button id="startButton" class="button primary" type="submit">Start simulation</button>
+          <button id="pauseButton" class="button" type="button" disabled>Pause</button>
+          <button id="resetButton" class="button" type="button">Reset</button>
+        </div>
+        <p class="helper-copy">Streams two <code>TELEMETRY</code> datagrams at 20 Hz through the local bridge. Heading is clockwise from true north.</p>
+      </form>
+
+      <div class="section-heading">
+        <h2>Live vehicles</h2>
+        <span id="vehicleCount">0 tracked</span>
+      </div>
+      <div id="vehicleList" class="vehicle-list">
+        <div class="vehicle-empty">Waiting for telemetry</div>
+      </div>
+
+      <div class="section-heading">
+        <h2>Network activity</h2>
+        <span>Newest first</span>
+      </div>
+      <div id="activityLog" class="activity" aria-live="polite">
+        <div class="activity-row"><time>--:--:--</time><span>No safety packets received</span></div>
+      </div>
+    </aside>
+
+    <section class="workspace" aria-label="Live vehicle map">
+      <header class="topbar">
+        <div class="headline-card">
+          <div id="streamIcon" class="stream-icon" aria-hidden="true"></div>
+          <div>
+            <small>Simulation stream</small>
+            <strong id="simulationState">Ready</strong>
+            <span id="simulationDetail">Configure two vehicles, then start the injector</span>
+          </div>
+        </div>
+        <div class="metric-card">
+          <small>Time to collision</small>
+          <strong id="ttcValue" class="accent">--</strong>
+        </div>
+        <div class="metric-card">
+          <small>Consensus</small>
+          <strong id="consensusValue">Idle</strong>
+        </div>
+        <div class="metric-card">
+          <small>Latest action</small>
+          <strong id="actionValue">None</strong>
+        </div>
+        <div class="metric-card">
+          <small>Last V2V packet</small>
+          <strong id="lastPacketValue">--</strong>
+        </div>
+      </header>
+
+      <div id="canvasWrap" class="canvas-wrap">
+        <canvas id="simulationCanvas" aria-label="Top-down visualization of both vehicles"></canvas>
+        <div class="map-badge"><i aria-hidden="true"></i><span id="referenceText">LOCAL ENU · awaiting reference</span></div>
+        <div class="legend" aria-hidden="true">
+          <span class="legend-item"><i></i> CAR1</span>
+          <span class="legend-item"><i></i> CAR2</span>
+          <span class="legend-item"><i></i> braking</span>
+        </div>
+        <div id="emptyOverlay" class="empty-overlay">
+          <div class="radar" aria-hidden="true"></div>
+          <strong>Airspace monitor standing by</strong>
+          <p>Start a local scenario or wait for telemetry broadcasts from the two QNX vehicles.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const EARTH_RADIUS_METERS = 6371000;
+      const STREAM_INTERVAL_MS = 50;
+      const CONSENSUS_WINDOW_MS = 150;
+      const MAX_PACKET_CHARS = 4096;
+      const MAX_TRAIL_POINTS = 180;
+      const requestedWsPort = Number(new URLSearchParams(window.location.search).get('wsPort'));
+      const wsPort = Number.isInteger(requestedWsPort) && requestedWsPort > 0 && requestedWsPort <= 65535
+        ? requestedWsPort : 8080;
+      const WS_URL = `ws://${window.location.hostname || 'localhost'}:${wsPort}`;
+      const CAR_COLORS = ['#3be0d0', '#ffaf5c', '#9b8cff', '#63e69c'];
+
+      const canvas = document.getElementById('simulationCanvas');
+      const canvasWrap = document.getElementById('canvasWrap');
+      const context = canvas.getContext('2d');
+      const configForm = document.getElementById('configForm');
+      const formError = document.getElementById('formError');
+      const startButton = document.getElementById('startButton');
+      const pauseButton = document.getElementById('pauseButton');
+      const resetButton = document.getElementById('resetButton');
+      const connectionDot = document.getElementById('connectionDot');
+      const connectionText = document.getElementById('connectionText');
+      const rxRate = document.getElementById('rxRate');
+      const streamIcon = document.getElementById('streamIcon');
+      const simulationStateElement = document.getElementById('simulationState');
+      const simulationDetail = document.getElementById('simulationDetail');
+      const ttcValue = document.getElementById('ttcValue');
+      const consensusValue = document.getElementById('consensusValue');
+      const actionValue = document.getElementById('actionValue');
+      const lastPacketValue = document.getElementById('lastPacketValue');
+      const referenceText = document.getElementById('referenceText');
+      const emptyOverlay = document.getElementById('emptyOverlay');
+      const vehicleList = document.getElementById('vehicleList');
+      const vehicleCount = document.getElementById('vehicleCount');
+      const activityLog = document.getElementById('activityLog');
+
+      const cars = new Map();
+      const proposals = new Map();
+      const pendingActions = new Map();
+      const packetTimes = [];
+      const activityEntries = [];
+
+      let webSocket = null;
+      let reconnectTimer = null;
+      let reconnectAttempt = 0;
+      let streamTimer = null;
+      let simulationMode = 'READY';
+      let worldReference = null;
+      let lastIntegrationTime = 0;
+      let lastPassiveIntegrationTime = 0;
+      let lastUiUpdate = 0;
+      let lastRateUpdate = 0;
+      let viewportWidth = 1;
+      let viewportHeight = 1;
+      let deviceScale = 1;
+      let colorSequence = 0;
+      let latestTtc = null;
+      let consensusLockedUntil = 0;
+      let cameraInitialized = false;
+      const camera = { x: 0, y: 0, scale: 8 };
+
+      function clamp(value, minimum, maximum) {
+        return Math.min(maximum, Math.max(minimum, value));
+      }
+
+      function normalizeHeading(value) {
+        return ((value % 360) + 360) % 360;
+      }
+
+      function validVehicleId(value) {
+        return typeof value === 'string' && /^[A-Za-z0-9_-]{1,24}$/.test(value);
+      }
+
+      function finiteInRange(value, minimum, maximum) {
+        return Number.isFinite(value) && value >= minimum && value <= maximum;
+      }
+
+      function formatAction(value) {
+        return String(value || 'NONE').replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+      }
+
+      function normalizeAction(value) {
+        const normalized = String(value || 'NONE').trim().toUpperCase().replace(/[\s-]+/g, '_');
+        if (['BRAKE', 'BRAKING', 'FULL_BRAKE', 'FULL_BRAKING'].includes(normalized)) {
+          return 'BRAKE';
+        }
+        if (['EMERGENCY_STOP', 'ESTOP', 'E_STOP'].includes(normalized)) {
+          return 'EMERGENCY_STOP';
+        }
+        if (['SWERVE_LEFT', 'LEFT', 'TURN_LEFT'].includes(normalized)) {
+          return 'SWERVE_LEFT';
+        }
+        if (['SWERVE_RIGHT', 'RIGHT', 'TURN_RIGHT'].includes(normalized)) {
+          return 'SWERVE_RIGHT';
+        }
+        if (['NONE', 'CRUISE', 'SIMULATED', 'IDLE'].includes(normalized)) {
+          return 'NONE';
+        }
+        return normalized.slice(0, 40);
+      }
+
+      function isPhysicalAction(action) {
+        return ['BRAKE', 'EMERGENCY_STOP', 'SWERVE_LEFT', 'SWERVE_RIGHT'].includes(normalizeAction(action));
+      }
+
+      function chooseCarColor(id) {
+        if (id.toUpperCase() === 'CAR1') return CAR_COLORS[0];
+        if (id.toUpperCase() === 'CAR2') return CAR_COLORS[1];
+        const color = CAR_COLORS[colorSequence % CAR_COLORS.length];
+        colorSequence += 1;
+        return color;
+      }
+
+      function setConnection(status, label) {
+        connectionDot.className = `connection-dot ${status}`;
+        connectionText.textContent = label;
+      }
+
+      function setSimulationMode(mode, detail) {
+        simulationMode = mode;
+        const display = mode.charAt(0) + mode.slice(1).toLowerCase();
+        simulationStateElement.textContent = display;
+        simulationDetail.textContent = detail;
+        streamIcon.className = 'stream-icon';
+        if (mode === 'RUNNING') streamIcon.classList.add('live');
+        if (mode === 'PAUSED') streamIcon.classList.add('paused');
+      }
+
+      function setMetricTone(element, tone) {
+        element.classList.remove('accent', 'warning', 'danger', 'safe');
+        if (tone) element.classList.add(tone);
+      }
+
+      function setTtc(value) {
+        if (!Number.isFinite(value) || value < 0 || value > 120) return;
+        latestTtc = value;
+        ttcValue.textContent = `${value.toFixed(2)} s`;
+        setMetricTone(ttcValue, value < 3 ? 'danger' : value < 6 ? 'warning' : 'safe');
+      }
+
+      function setConsensus(label, tone) {
+        consensusValue.textContent = label;
+        setMetricTone(consensusValue, tone);
+      }
+
+      function setLatestAction(label, tone) {
+        actionValue.textContent = label;
+        setMetricTone(actionValue, tone);
+      }
+
+      function connectWebSocket() {
+        window.clearTimeout(reconnectTimer);
+        setConnection('connecting', 'Connecting');
+
+        try {
+          webSocket = new WebSocket(WS_URL);
+          webSocket.binaryType = 'arraybuffer';
+        } catch (error) {
+          scheduleReconnect();
+          return;
+        }
+
+        webSocket.addEventListener('open', () => {
+          reconnectAttempt = 0;
+          setConnection('online', 'Online');
+          startButton.disabled = false;
+          addActivity('LINK', 'WebSocket bridge connected');
+        });
+
+        webSocket.addEventListener('message', async (event) => {
+          try {
+            let raw;
+            if (typeof event.data === 'string') {
+              raw = event.data;
+            } else if (event.data instanceof ArrayBuffer) {
+              raw = new TextDecoder().decode(event.data);
+            } else if (event.data && typeof event.data.text === 'function') {
+              raw = await event.data.text();
+            } else {
+              return;
+            }
+            handlePacket(raw);
+          } catch (error) {
+            addActivity('DROP', 'Unreadable WebSocket payload');
+          }
+        });
+
+        webSocket.addEventListener('close', () => {
+          setConnection('', 'Offline');
+          startButton.disabled = true;
+          if (simulationMode === 'RUNNING') {
+            stopStream();
+            setSimulationMode('PAUSED', 'Telemetry paused because the bridge disconnected');
+            pauseButton.textContent = 'Resume';
+            addActivity('LINK', 'Injector paused until the bridge reconnects');
+          }
+          scheduleReconnect();
+        });
+
+        webSocket.addEventListener('error', () => {
+          setConnection('', 'Offline');
+        });
+      }
+
+      function scheduleReconnect() {
+        window.clearTimeout(reconnectTimer);
+        const delay = Math.min(10000, 750 * (2 ** reconnectAttempt));
+        reconnectAttempt = Math.min(reconnectAttempt + 1, 5);
+        reconnectTimer = window.setTimeout(connectWebSocket, delay);
+      }
+
+      function sendPacket(packet) {
+        if (!webSocket || webSocket.readyState !== WebSocket.OPEN) {
+          return false;
+        }
+        webSocket.send(packet);
+        return true;
+      }
+
+      function readConfiguration() {
+        const definitions = [
+          ['latitude', -90, 90, 'latitude'],
+          ['longitude', -180, 180, 'longitude'],
+          ['heading', 0, 359.999, 'heading'],
+          ['speed', 0, 80, 'speed'],
+          ['width', 0.5, 4, 'width'],
+          ['length', 1, 20, 'length'],
+        ];
+        const result = [];
+        let firstInvalid = null;
+
+        document.querySelectorAll('input[data-car]').forEach((input) => input.classList.remove('invalid'));
+
+        for (const id of ['CAR1', 'CAR2']) {
+          const vehicle = { id };
+          for (const [field, minimum, maximum, label] of definitions) {
+            const input = document.querySelector(`input[data-car="${id}"][data-field="${field}"]`);
+            const value = input.value.trim() === '' ? NaN : input.valueAsNumber;
+            if (!finiteInRange(value, minimum, maximum)) {
+              input.classList.add('invalid');
+              if (!firstInvalid) firstInvalid = { input, message: `${id} ${label} must be between ${minimum} and ${maximum}.` };
+            }
+            vehicle[field] = value;
+          }
+          result.push(vehicle);
+        }
+
+        if (firstInvalid) {
+          formError.textContent = firstInvalid.message;
+          formError.classList.add('visible');
+          firstInvalid.input.focus();
+          return null;
+        }
+
+        formError.textContent = '';
+        formError.classList.remove('visible');
+        return result;
+      }
+
+      function makeCar(config, isLocal) {
+        return {
+          id: config.id,
+          latitude: config.latitude,
+          longitude: config.longitude,
+          heading: normalizeHeading(config.heading),
+          speed: config.speed,
+          width: config.width,
+          length: config.length,
+          telemetryState: isLocal ? 'SIMULATED' : 'UNKNOWN',
+          executionState: '',
+          action: 'NONE',
+          actionStartedAt: 0,
+          actionUntil: 0,
+          isLocal,
+          color: chooseCarColor(config.id),
+          trail: [],
+          lastTrailAt: 0,
+          lastSeenAt: Date.now(),
+        };
+      }
+
+      function beginSimulation(configuration) {
+        stopStream();
+        cars.clear();
+        proposals.clear();
+        pendingActions.clear();
+        activityEntries.length = 0;
+        colorSequence = 0;
+        latestTtc = null;
+        consensusLockedUntil = 0;
+        lastPassiveIntegrationTime = 0;
+        ttcValue.textContent = '--';
+        setMetricTone(ttcValue, 'accent');
+        setConsensus('Listening', 'accent');
+        setLatestAction('None', '');
+
+        worldReference = {
+          latitude: (configuration[0].latitude + configuration[1].latitude) / 2,
+          longitude: (configuration[0].longitude + configuration[1].longitude) / 2,
+        };
+        updateReferenceLabel();
+
+        for (const config of configuration) {
+          const car = makeCar(config, true);
+          cars.set(car.id, car);
+          appendTrail(car, true);
+        }
+
+        cameraInitialized = false;
+        pauseButton.disabled = false;
+        pauseButton.textContent = 'Pause';
+        startButton.textContent = 'Restart';
+        setSimulationMode('RUNNING', 'Broadcasting simulated telemetry at 20 Hz');
+        addActivity('SIM', 'Scenario started · state=SIMULATED');
+        startStream();
+        updateUi(true);
+      }
+
+      function startStream() {
+        stopStream();
+        lastIntegrationTime = performance.now();
+        streamTick();
+        streamTimer = window.setInterval(streamTick, STREAM_INTERVAL_MS);
+      }
+
+      function stopStream() {
+        if (streamTimer !== null) {
+          window.clearInterval(streamTimer);
+          streamTimer = null;
+        }
+      }
+
+      function streamTick() {
+        if (simulationMode !== 'RUNNING') return;
+        const now = performance.now();
+        const elapsed = clamp((now - lastIntegrationTime) / 1000, 0, 2.0);
+        lastIntegrationTime = now;
+        integrateLocalCars(elapsed, now);
+
+        let sentEveryPacket = true;
+        for (const car of cars.values()) {
+          if (!car.isLocal) continue;
+          const packet = [
+            'TELEMETRY',
+            car.id,
+            car.latitude.toFixed(8),
+            car.longitude.toFixed(8),
+            car.heading.toFixed(3),
+            car.speed.toFixed(3),
+            car.width.toFixed(3),
+            car.length.toFixed(3),
+            'SIMULATED',
+          ].join(',');
+          sentEveryPacket = sendPacket(packet) && sentEveryPacket;
+        }
+        if (!sentEveryPacket) {
+          stopStream();
+          setSimulationMode('PAUSED', 'Telemetry paused because the bridge is unavailable');
+          pauseButton.textContent = 'Resume';
+          addActivity('DROP', 'Telemetry injection stopped: WebSocket unavailable');
+        }
+      }
+
+      function integrateLocalCars(elapsed, now) {
+        for (const car of cars.values()) {
+          if (!car.isLocal) continue;
+          integrateCarMotion(car, elapsed, now);
+          car.lastSeenAt = Date.now();
+        }
+      }
+
+      function integratePassiveCars(elapsed, now) {
+        for (const car of cars.values()) {
+          if (car.isLocal) continue;
+          integrateCarMotion(car, elapsed, now);
+        }
+      }
+
+      function integrateCarMotion(car, elapsed, now) {
+        if (car.action === 'BRAKE') {
+          car.speed = Math.max(0, car.speed - 7.5 * elapsed);
+        } else if (car.action === 'EMERGENCY_STOP') {
+          car.speed = Math.max(0, car.speed - 9.0 * elapsed);
+        } else if (car.action === 'SWERVE_LEFT' && now <= car.actionUntil) {
+          car.heading = normalizeHeading(car.heading - 28 * elapsed);
+        } else if (car.action === 'SWERVE_RIGHT' && now <= car.actionUntil) {
+          car.heading = normalizeHeading(car.heading + 28 * elapsed);
+        }
+
+        const headingRadians = car.heading * Math.PI / 180;
+        const northMeters = Math.cos(headingRadians) * car.speed * elapsed;
+        const eastMeters = Math.sin(headingRadians) * car.speed * elapsed;
+        car.latitude = clamp(
+          car.latitude + (northMeters / EARTH_RADIUS_METERS) * 180 / Math.PI,
+          -89.999999,
+          89.999999,
+        );
+        const latitudeCosine = Math.max(0.000001, Math.abs(Math.cos(car.latitude * Math.PI / 180)));
+        car.longitude += (eastMeters / (EARTH_RADIUS_METERS * latitudeCosine)) * 180 / Math.PI;
+        car.longitude = ((car.longitude + 540) % 360) - 180;
+        appendTrail(car, false);
+      }
+
+      function pauseOrResume() {
+        if (simulationMode === 'RUNNING') {
+          stopStream();
+          setSimulationMode('PAUSED', 'Vehicle motion and telemetry injection are paused');
+          pauseButton.textContent = 'Resume';
+          addActivity('SIM', 'Scenario paused');
+        } else if (simulationMode === 'PAUSED') {
+          setSimulationMode('RUNNING', 'Broadcasting simulated telemetry at 20 Hz');
+          pauseButton.textContent = 'Pause';
+          addActivity('SIM', 'Scenario resumed');
+          startStream();
+        }
+      }
+
+      function resetSimulation() {
+        stopStream();
+        cars.clear();
+        proposals.clear();
+        pendingActions.clear();
+        worldReference = null;
+        latestTtc = null;
+        consensusLockedUntil = 0;
+        lastPassiveIntegrationTime = 0;
+        cameraInitialized = false;
+        pauseButton.disabled = true;
+        pauseButton.textContent = 'Pause';
+        startButton.textContent = 'Start simulation';
+        ttcValue.textContent = '--';
+        setMetricTone(ttcValue, 'accent');
+        setConsensus('Idle', '');
+        setLatestAction('None', '');
+        referenceText.textContent = 'LOCAL ENU · awaiting reference';
+        setSimulationMode('READY', 'Configure two vehicles, then start the injector');
+        addActivity('SIM', 'Scenario reset');
+        updateUi(true);
+      }
+
+      function handlePacket(rawPacket) {
+        if (typeof rawPacket !== 'string' || rawPacket.length === 0 || rawPacket.length > MAX_PACKET_CHARS || rawPacket.includes('\0')) {
+          return;
+        }
+
+        const packet = rawPacket.trim();
+        if (!packet || packet.includes('\n') || packet.includes('\r')) return;
+        const fields = packet.split(',').map((field) => field.trim());
+        if (fields.length < 2 || fields.length > 24) return;
+
+        const type = fields[0].toUpperCase();
+        packetTimes.push(performance.now());
+        lastPacketValue.textContent = type;
+
+        switch (type) {
+          case 'TELEMETRY':
+            parseTelemetry(fields);
+            break;
+          case 'PROPOSAL':
+            parseProposal(fields);
+            break;
+          case 'EXECUTION':
+          case 'EXECUTE':
+            parseExecution(fields);
+            break;
+          case 'STATUS':
+          case 'STATE':
+            parseStatus(fields);
+            break;
+          case 'TTC':
+          case 'COLLISION':
+            parseTtcPacket(fields);
+            break;
+          default:
+            addActivity('RX', packet.slice(0, 100));
+            break;
+        }
+      }
+
+      function parseTelemetry(fields) {
+        // TELEMETRY,car_id,latitude,longitude,heading,speed,width,length,state
+        if (fields.length !== 9 || !['CAR1', 'CAR2'].includes(fields[1])
+            || fields.slice(2, 8).some((field) => field === '')) return;
+        const parsed = {
+          id: fields[1],
+          latitude: Number(fields[2]),
+          longitude: Number(fields[3]),
+          heading: Number(fields[4]),
+          speed: Number(fields[5]),
+          width: Number(fields[6]),
+          length: Number(fields[7]),
+          state: fields[8],
+        };
+
+        if (!finiteInRange(parsed.latitude, -90, 90)
+            || !finiteInRange(parsed.longitude, -180, 180)
+            || !Number.isFinite(parsed.heading)
+            || !finiteInRange(parsed.speed, 0, 120)
+            || !finiteInRange(parsed.width, 0.3, 8)
+            || !finiteInRange(parsed.length, 0.5, 30)) {
+          return;
+        }
+
+        if (!worldReference) {
+          worldReference = { latitude: parsed.latitude, longitude: parsed.longitude };
+          updateReferenceLabel();
+          cameraInitialized = false;
+        }
+
+        let car = cars.get(parsed.id);
+        if (!car) {
+          car = makeCar(parsed, false);
+          cars.set(parsed.id, car);
+        }
+
+        car.latitude = parsed.latitude;
+        car.longitude = parsed.longitude;
+        car.heading = normalizeHeading(parsed.heading);
+        car.speed = parsed.speed;
+        car.width = parsed.width;
+        car.length = parsed.length;
+        car.telemetryState = parsed.state.slice(0, 32);
+        car.lastSeenAt = Date.now();
+        appendTrail(car, false);
+
+        const stateAction = normalizeAction(parsed.state);
+        if (isPhysicalAction(stateAction)) {
+          applyAction(parsed.id, stateAction, parsed.state);
+        } else if (parsed.state.toUpperCase() === 'MONITORING' && car.action !== 'NONE') {
+          pendingActions.delete(parsed.id);
+          applyAction(parsed.id, 'NONE', 'MONITORING');
+        }
+        if (pendingActions.has(parsed.id)) {
+          const pending = pendingActions.get(parsed.id);
+          applyAction(parsed.id, pending.action, pending.state);
+        }
+      }
+
+      function parseProposal(fields) {
+        if (fields.length !== 4 || !validVehicleId(fields[1])) return;
+        const senderId = fields[1];
+        const car1Action = normalizeAction(fields[2]);
+        const car2Action = normalizeAction(fields[3]);
+        const signature = `${car1Action}|${car2Action}`;
+        proposals.set(senderId, { senderId, car1Action, car2Action, signature, receivedAt: Date.now() });
+        addActivity('PLAN', `${senderId}: ${formatAction(car1Action)} / ${formatAction(car2Action)}`);
+        evaluateConsensus();
+      }
+
+      function evaluateConsensus() {
+        if (Date.now() < consensusLockedUntil) return;
+        const cutoff = Date.now() - CONSENSUS_WINDOW_MS;
+        const recent = [...proposals.values()].filter((proposal) => proposal.receivedAt >= cutoff);
+        if (recent.length < 2) {
+          setConsensus('Awaiting peer', 'warning');
+          return;
+        }
+
+        const signatures = new Set(recent.map((proposal) => proposal.signature));
+        const receivedTimes = recent.map((proposal) => proposal.receivedAt);
+        const insideWindow = Math.max(...receivedTimes) - Math.min(...receivedTimes) <= CONSENSUS_WINDOW_MS;
+        if (signatures.size === 1 && insideWindow) {
+          setConsensus('Matched', 'safe');
+        } else {
+          setConsensus('Mismatch', 'danger');
+        }
+      }
+
+      function parseExecution(fields) {
+        // Canonical Pi packet: EXECUTION,car_id,action,state,ttc
+        if (fields.length === 5 && validVehicleId(fields[1]) && fields[4] !== '') {
+          const carId = fields[1];
+          const action = normalizeAction(fields[2]);
+          const state = fields[3].slice(0, 32);
+          const ttc = Number(fields[4]);
+          applyAction(carId, action, state);
+          if (Number.isFinite(ttc)) setTtc(ttc);
+          const emergency = action === 'EMERGENCY_STOP'
+            || state.toUpperCase().includes('EMERGENCY');
+          setConsensus(emergency ? 'Emergency fallback' : 'Executing', emergency ? 'danger' : 'safe');
+          consensusLockedUntil = Date.now() + 3000;
+          addActivity('EXEC', `${carId}: ${formatAction(action)} · ${state}`);
+          return;
+        }
+
+        // Tolerant support for joint packets used by early PoC builds:
+        // EXECUTION,sender_id,car_1_action,car_2_action
+        if (fields.length >= 4 && validVehicleId(fields[1])) {
+          const actionOne = normalizeAction(fields[2]);
+          const actionTwo = normalizeAction(fields[3]);
+          if (isPhysicalAction(actionOne) || isPhysicalAction(actionTwo)) {
+            applyAction('CAR1', actionOne, 'EXECUTE');
+            applyAction('CAR2', actionTwo, 'EXECUTE');
+            setConsensus('Executing', 'safe');
+            addActivity('EXEC', `${formatAction(actionOne)} / ${formatAction(actionTwo)}`);
+          }
+        }
+      }
+
+      function parseStatus(fields) {
+        if (fields.length < 3 || !validVehicleId(fields[1])) return;
+        const carId = fields[1];
+        const state = fields[2].slice(0, 32);
+        const action = fields.length > 3 ? normalizeAction(fields[3]) : normalizeAction(state);
+        const possibleTtc = fields.length > 4 ? Number(fields[4]) : NaN;
+        if (isPhysicalAction(action)) applyAction(carId, action, state);
+        if (Number.isFinite(possibleTtc)) setTtc(possibleTtc);
+        addActivity('STATE', `${carId}: ${state}`);
+      }
+
+      function parseTtcPacket(fields) {
+        for (let index = fields.length - 1; index >= 1; index -= 1) {
+          const candidate = Number(fields[index]);
+          if (Number.isFinite(candidate) && candidate >= 0) {
+            setTtc(candidate);
+            addActivity('TTC', `${candidate.toFixed(2)} seconds`);
+            return;
+          }
+        }
+      }
+
+      function applyAction(carId, actionValue, state) {
+        const action = normalizeAction(actionValue);
+        if (action === 'NONE') {
+          pendingActions.delete(carId);
+        } else {
+          pendingActions.set(carId, { action, state, receivedAt: Date.now() });
+        }
+        const car = cars.get(carId);
+        if (car && car.action !== action) {
+          car.action = action;
+          car.executionState = state || 'EXECUTE';
+          car.actionStartedAt = performance.now();
+          car.actionUntil = car.actionStartedAt + 2200;
+        } else if (car) {
+          car.executionState = state || car.executionState;
+        }
+
+        if (action !== 'NONE') {
+          const tone = ['BRAKE', 'EMERGENCY_STOP'].includes(action) ? 'danger' : 'warning';
+          setLatestAction(`${carId} · ${formatAction(action)}`, tone);
+        }
+      }
+
+      function appendTrail(car, force) {
+        const now = performance.now();
+        if (!force && now - car.lastTrailAt < 180) return;
+        car.lastTrailAt = now;
+        car.trail.push({ latitude: car.latitude, longitude: car.longitude });
+        if (car.trail.length > MAX_TRAIL_POINTS) car.trail.shift();
+      }
+
+      function updateReferenceLabel() {
+        if (!worldReference) return;
+        referenceText.textContent = `LOCAL ENU · ${worldReference.latitude.toFixed(5)}, ${worldReference.longitude.toFixed(5)}`;
+      }
+
+      function toLocalMeters(latitude, longitude) {
+        if (!worldReference) return { x: 0, y: 0 };
+        const referenceRadians = worldReference.latitude * Math.PI / 180;
+        const longitudeDelta = ((longitude - worldReference.longitude + 540) % 360) - 180;
+        return {
+          x: longitudeDelta * Math.PI / 180 * EARTH_RADIUS_METERS * Math.cos(referenceRadians),
+          y: (latitude - worldReference.latitude) * Math.PI / 180 * EARTH_RADIUS_METERS,
+        };
+      }
+
+      function resizeCanvas() {
+        const bounds = canvasWrap.getBoundingClientRect();
+        viewportWidth = Math.max(1, bounds.width);
+        viewportHeight = Math.max(1, bounds.height);
+        deviceScale = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.round(viewportWidth * deviceScale);
+        canvas.height = Math.round(viewportHeight * deviceScale);
+        canvas.style.width = `${viewportWidth}px`;
+        canvas.style.height = `${viewportHeight}px`;
+      }
+
+      function calculateCameraTarget() {
+        const points = [];
+        for (const car of cars.values()) {
+          const point = toLocalMeters(car.latitude, car.longitude);
+          points.push(point);
+          const radians = car.heading * Math.PI / 180;
+          const horizon = clamp(car.speed * 3, 10, 60);
+          points.push({ x: point.x + Math.sin(radians) * horizon, y: point.y + Math.cos(radians) * horizon });
+        }
+
+        if (points.length === 0) return { x: 0, y: 0, scale: 8 };
+        let minimumX = points[0].x;
+        let maximumX = points[0].x;
+        let minimumY = points[0].y;
+        let maximumY = points[0].y;
+        for (const point of points) {
+          minimumX = Math.min(minimumX, point.x);
+          maximumX = Math.max(maximumX, point.x);
+          minimumY = Math.min(minimumY, point.y);
+          maximumY = Math.max(maximumY, point.y);
+        }
+
+        const spanX = Math.max(42, maximumX - minimumX + 20);
+        const spanY = Math.max(42, maximumY - minimumY + 20);
+        const availableWidth = Math.max(100, viewportWidth - 90);
+        const availableHeight = Math.max(100, viewportHeight - 90);
+        return {
+          x: (minimumX + maximumX) / 2,
+          y: (minimumY + maximumY) / 2,
+          scale: clamp(Math.min(availableWidth / spanX, availableHeight / spanY), 1.2, 16),
+        };
+      }
+
+      function worldToScreen(point) {
+        return {
+          x: viewportWidth / 2 + (point.x - camera.x) * camera.scale,
+          y: viewportHeight / 2 - (point.y - camera.y) * camera.scale,
+        };
+      }
+
+      function drawFrame(timestamp) {
+        if (lastPassiveIntegrationTime > 0) {
+          integratePassiveCars(clamp((timestamp - lastPassiveIntegrationTime) / 1000, 0, 0.1), timestamp);
+        }
+        lastPassiveIntegrationTime = timestamp;
+        context.setTransform(deviceScale, 0, 0, deviceScale, 0, 0);
+        context.clearRect(0, 0, viewportWidth, viewportHeight);
+
+        const target = calculateCameraTarget();
+        if (!cameraInitialized) {
+          Object.assign(camera, target);
+          cameraInitialized = true;
+        } else {
+          camera.x += (target.x - camera.x) * 0.055;
+          camera.y += (target.y - camera.y) * 0.055;
+          camera.scale += (target.scale - camera.scale) * 0.055;
+        }
+
+        drawMapGrid();
+        drawTrails();
+        drawPredictedPaths();
+        for (const car of cars.values()) drawCar(car, timestamp);
+
+        if (timestamp - lastUiUpdate > 220) {
+          updateUi(false);
+          lastUiUpdate = timestamp;
+        }
+        if (timestamp - lastRateUpdate > 500) {
+          updatePacketRate(timestamp);
+          lastRateUpdate = timestamp;
+        }
+        requestAnimationFrame(drawFrame);
+      }
+
+      function gridStepForScale(scale) {
+        const targetMeters = 75 / scale;
+        const steps = [1, 2, 5, 10, 20, 50, 100, 200, 500];
+        return steps.find((step) => step >= targetMeters) || 1000;
+      }
+
+      function drawMapGrid() {
+        const step = gridStepForScale(camera.scale);
+        const leftWorld = camera.x - viewportWidth / (2 * camera.scale);
+        const rightWorld = camera.x + viewportWidth / (2 * camera.scale);
+        const bottomWorld = camera.y - viewportHeight / (2 * camera.scale);
+        const topWorld = camera.y + viewportHeight / (2 * camera.scale);
+
+        context.save();
+        context.lineWidth = 1;
+        context.font = '9px ui-monospace, SFMono-Regular, Consolas, monospace';
+        context.fillStyle = 'rgba(125, 154, 170, 0.36)';
+
+        for (let x = Math.floor(leftWorld / step) * step; x <= rightWorld; x += step) {
+          const screen = worldToScreen({ x, y: 0 });
+          context.strokeStyle = Math.abs(x) < step / 10 ? 'rgba(59, 224, 208, 0.16)' : 'rgba(137, 169, 186, 0.07)';
+          context.beginPath();
+          context.moveTo(screen.x, 0);
+          context.lineTo(screen.x, viewportHeight);
+          context.stroke();
+          context.fillText(`${Math.round(x)}m E`, screen.x + 4, viewportHeight - 10);
+        }
+
+        for (let y = Math.floor(bottomWorld / step) * step; y <= topWorld; y += step) {
+          const screen = worldToScreen({ x: 0, y });
+          context.strokeStyle = Math.abs(y) < step / 10 ? 'rgba(59, 224, 208, 0.16)' : 'rgba(137, 169, 186, 0.07)';
+          context.beginPath();
+          context.moveTo(0, screen.y);
+          context.lineTo(viewportWidth, screen.y);
+          context.stroke();
+          context.fillText(`${Math.round(y)}m N`, 8, screen.y - 5);
+        }
+        context.restore();
+      }
+
+      function drawTrails() {
+        for (const car of cars.values()) {
+          if (car.trail.length < 2) continue;
+          context.save();
+          context.strokeStyle = hexToRgba(car.color, 0.24);
+          context.lineWidth = 1.5;
+          context.beginPath();
+          car.trail.forEach((point, index) => {
+            const screen = worldToScreen(toLocalMeters(point.latitude, point.longitude));
+            if (index === 0) context.moveTo(screen.x, screen.y);
+            else context.lineTo(screen.x, screen.y);
+          });
+          context.stroke();
+          context.restore();
+        }
+      }
+
+      function drawPredictedPaths() {
+        for (const car of cars.values()) {
+          const start = toLocalMeters(car.latitude, car.longitude);
+          const radians = car.heading * Math.PI / 180;
+          const distance = clamp(car.speed * 3, 8, 60);
+          const end = {
+            x: start.x + Math.sin(radians) * distance,
+            y: start.y + Math.cos(radians) * distance,
+          };
+          const startScreen = worldToScreen(start);
+          const endScreen = worldToScreen(end);
+          context.save();
+          context.strokeStyle = hexToRgba(car.color, 0.25);
+          context.lineWidth = 1;
+          context.setLineDash([5, 7]);
+          context.beginPath();
+          context.moveTo(startScreen.x, startScreen.y);
+          context.lineTo(endScreen.x, endScreen.y);
+          context.stroke();
+          context.restore();
+        }
+      }
+
+      function drawCar(car, timestamp) {
+        const world = toLocalMeters(car.latitude, car.longitude);
+        const screen = worldToScreen(world);
+        const headingRadians = car.heading * Math.PI / 180;
+        const visualScale = clamp(camera.scale, 3.2, 13);
+        const width = Math.max(10, car.width * visualScale);
+        const length = Math.max(22, car.length * visualScale);
+        const braking = ['BRAKE', 'EMERGENCY_STOP'].includes(car.action);
+        const swerving = ['SWERVE_LEFT', 'SWERVE_RIGHT'].includes(car.action);
+        const pulse = 0.68 + Math.sin(timestamp / 110) * 0.18;
+        const bodyColor = braking ? '#ff5d68' : swerving ? '#a98cff' : car.color;
+
+        context.save();
+        context.translate(screen.x, screen.y);
+        context.rotate(headingRadians);
+
+        if (braking) {
+          context.shadowColor = '#ff5d68';
+          context.shadowBlur = 18 * pulse;
+        } else {
+          context.shadowColor = car.color;
+          context.shadowBlur = 10;
+        }
+
+        roundRectangle(context, -width / 2, -length / 2, width, length, Math.min(6, width * 0.25));
+        context.fillStyle = bodyColor;
+        context.globalAlpha = braking ? pulse : 0.9;
+        context.fill();
+        context.globalAlpha = 1;
+        context.shadowBlur = 0;
+        context.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+        context.lineWidth = 1;
+        context.stroke();
+
+        const cabinWidth = width * 0.68;
+        const cabinHeight = length * 0.34;
+        roundRectangle(context, -cabinWidth / 2, -length * 0.14, cabinWidth, cabinHeight, 3);
+        context.fillStyle = 'rgba(5, 19, 27, 0.72)';
+        context.fill();
+
+        context.fillStyle = '#e9ffff';
+        context.beginPath();
+        context.moveTo(0, -length / 2 - 7);
+        context.lineTo(-4, -length / 2 + 1);
+        context.lineTo(4, -length / 2 + 1);
+        context.closePath();
+        context.fill();
+
+        if (braking) {
+          context.fillStyle = '#fff3f4';
+          context.fillRect(-width * 0.38, length / 2 - 3, width * 0.22, 3);
+          context.fillRect(width * 0.16, length / 2 - 3, width * 0.22, 3);
+        }
+        context.restore();
+
+        context.save();
+        context.font = '650 11px ui-sans-serif, system-ui, sans-serif';
+        context.fillStyle = '#edf7fb';
+        context.fillText(car.id, screen.x + width / 2 + 8, screen.y - 3);
+        context.font = '500 9px ui-monospace, SFMono-Regular, Consolas, monospace';
+        context.fillStyle = 'rgba(174, 199, 211, 0.82)';
+        context.fillText(`${car.speed.toFixed(1)} m/s · ${car.heading.toFixed(0)}°`, screen.x + width / 2 + 8, screen.y + 10);
+        if (car.action !== 'NONE') {
+          context.fillStyle = braking ? '#ff8b93' : '#bdadff';
+          context.fillText(formatAction(car.action).toUpperCase(), screen.x + width / 2 + 8, screen.y + 23);
+        }
+        context.restore();
+      }
+
+      function roundRectangle(ctx, x, y, width, height, radius) {
+        const safeRadius = Math.min(radius, Math.abs(width) / 2, Math.abs(height) / 2);
+        ctx.beginPath();
+        ctx.moveTo(x + safeRadius, y);
+        ctx.arcTo(x + width, y, x + width, y + height, safeRadius);
+        ctx.arcTo(x + width, y + height, x, y + height, safeRadius);
+        ctx.arcTo(x, y + height, x, y, safeRadius);
+        ctx.arcTo(x, y, x + width, y, safeRadius);
+        ctx.closePath();
+      }
+
+      function hexToRgba(hex, alpha) {
+        const value = Number.parseInt(hex.slice(1), 16);
+        const red = (value >> 16) & 255;
+        const green = (value >> 8) & 255;
+        const blue = value & 255;
+        return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+      }
+
+      function updatePacketRate(now) {
+        while (packetTimes.length && packetTimes[0] < now - 1000) packetTimes.shift();
+        rxRate.textContent = `${packetTimes.length} pkt/s`;
+      }
+
+      function updateUi(force) {
+        const staleVehicleCutoff = Date.now() - 5000;
+        for (const [carId, car] of cars) {
+          if (!car.isLocal && car.lastSeenAt < staleVehicleCutoff) {
+            cars.delete(carId);
+            pendingActions.delete(carId);
+          }
+        }
+        emptyOverlay.classList.toggle('hidden', cars.size > 0);
+        vehicleCount.textContent = `${cars.size} tracked`;
+
+        if (cars.size === 0) {
+          vehicleList.innerHTML = '<div class="vehicle-empty">Waiting for telemetry</div>';
+        } else {
+          const sortedCars = [...cars.values()].sort((first, second) => first.id.localeCompare(second.id));
+          vehicleList.replaceChildren(...sortedCars.map((car) => {
+            const row = document.createElement('div');
+            row.className = 'vehicle-row';
+
+            const dot = document.createElement('i');
+            dot.className = 'mini-dot';
+            dot.style.background = ['BRAKE', 'EMERGENCY_STOP'].includes(car.action) ? '#ff5d68' : car.color;
+
+            const identity = document.createElement('div');
+            identity.className = 'identity';
+            const name = document.createElement('strong');
+            name.textContent = car.id;
+            const state = document.createElement('span');
+            state.textContent = car.action !== 'NONE' ? formatAction(car.action) : (car.telemetryState || 'TELEMETRY');
+            identity.append(name, state);
+
+            const metrics = document.createElement('div');
+            metrics.className = 'metrics';
+            const speed = document.createElement('strong');
+            speed.textContent = `${car.speed.toFixed(1)} m/s`;
+            const heading = document.createElement('span');
+            heading.textContent = `${car.heading.toFixed(0)}° heading`;
+            metrics.append(speed, heading);
+            row.append(dot, identity, metrics);
+            return row;
+          }));
+        }
+
+        const staleCutoff = Date.now() - CONSENSUS_WINDOW_MS;
+        for (const [sender, proposal] of proposals) {
+          if (proposal.receivedAt < staleCutoff) proposals.delete(sender);
+        }
+        for (const [carId, pending] of pendingActions) {
+          if (pending.receivedAt < Date.now() - 15000) pendingActions.delete(carId);
+        }
+        if (proposals.size > 0 && Date.now() >= consensusLockedUntil) evaluateConsensus();
+      }
+
+      function addActivity(kind, message) {
+        const timestamp = new Date();
+        activityEntries.unshift({ kind, message: String(message).slice(0, 130), timestamp });
+        if (activityEntries.length > 5) activityEntries.pop();
+
+        activityLog.replaceChildren(...activityEntries.map((entry) => {
+          const row = document.createElement('div');
+          row.className = 'activity-row';
+          const time = document.createElement('time');
+          time.textContent = entry.timestamp.toLocaleTimeString([], { hour12: false });
+          const text = document.createElement('span');
+          text.textContent = `${entry.kind} · ${entry.message}`;
+          row.append(time, text);
+          return row;
+        }));
+      }
+
+      configForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        if (!webSocket || webSocket.readyState !== WebSocket.OPEN) {
+          formError.textContent = 'Connect to the local bridge before starting the simulation.';
+          formError.classList.add('visible');
+          return;
+        }
+        const configuration = readConfiguration();
+        if (configuration) beginSimulation(configuration);
+      });
+
+      configForm.addEventListener('input', (event) => {
+        if (event.target.matches('input')) {
+          event.target.classList.remove('invalid');
+          formError.classList.remove('visible');
+        }
+      });
+
+      pauseButton.addEventListener('click', pauseOrResume);
+      resetButton.addEventListener('click', resetSimulation);
+      window.addEventListener('beforeunload', () => {
+        stopStream();
+        window.clearTimeout(reconnectTimer);
+        if (webSocket) webSocket.close();
+      });
+
+      if ('ResizeObserver' in window) {
+        new ResizeObserver(resizeCanvas).observe(canvasWrap);
+      } else {
+        window.addEventListener('resize', resizeCanvas);
+      }
+
+      resizeCanvas();
+      startButton.disabled = true;
+      connectWebSocket();
+      updateUi(true);
+      requestAnimationFrame(drawFrame);
+    })();
+  </script>
+</body>
+</html>

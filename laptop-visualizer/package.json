@@ -1,0 +1,17 @@
+{
+  "name": "v2v-laptop-visualizer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Passive UDP/WebSocket bridge and browser telemetry injector for the V2V collision avoidance demo",
+  "main": "bridge.js",
+  "scripts": {
+    "start": "node bridge.js",
+    "dev": "node bridge.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
