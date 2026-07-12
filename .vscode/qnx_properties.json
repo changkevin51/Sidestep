@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "template": {
+    "projectId": "Sidestep",
+    "artifactName": "Sidestep",
+    "buildType": "SimpleMake",
+    "language": "cpp",
+    "archlist": "aarch64le",
+    "artifactType": "Executable"
+  }
+}
