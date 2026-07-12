@@ -135,7 +135,9 @@ struct Runtime {
           proposal_transmitted(false),
           execution_ttc(0.0),
           clear_timer_active(false),
-          network_send_failure_reported(false) {}
+                    network_send_failure_reported(false),
+                    last_instruction_seq(0),
+                    has_instruction(false) {}
 
     std::string local_id;
     std::string configured_peer_id;
@@ -154,6 +156,9 @@ struct Runtime {
     bool clear_timer_active;
     Clock::time_point clear_since;
     bool network_send_failure_reported;
+    std::uint64_t last_instruction_seq;
+    Instruction latest_instruction;
+    bool has_instruction;
 };
 
 std::string trim(const std::string& input) {

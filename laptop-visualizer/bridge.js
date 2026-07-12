@@ -247,8 +247,34 @@ webSockets.on('error', (err) => {
 // A tiny static server keeps setup to one command and avoids browser file://
 // restrictions. It deliberately serves only the visualizer page.
 const visualizerPath = path.join(__dirname, 'simulation.html');
-const httpServer = http.createServer((request, response) => {
+const httpServer = http.createServer(async (request, response) => {
   const requestPath = (request.url || '/').split('?')[0];
+  if (request.method === 'POST' && requestPath === '/instruction') {
+    try {
+      const body = await readRequestBody(request);
+      const instruction = parseInstructionRequest(body);
+      if (!udpSenderReady) {
+        response.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' });
+        response.end(JSON.stringify({ ok: false, error: 'UDP sender is not ready yet' }));
+        return;
+      }
+      if (!instruction) {
+        response.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        response.end(JSON.stringify({ ok: false, error: 'invalid instruction payload' }));
+        return;
+      }
+
+      await broadcastInstruction(instruction);
+      response.writeHead(202, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ ok: true }));
+    } catch (err) {
+      error('could not broadcast instruction', err);
+      response.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ ok: false, error: 'could not broadcast instruction' }));
+    }
+    return;
+  }
+
   if (requestPath === '/favicon.ico') {
     response.writeHead(204);
     response.end();
