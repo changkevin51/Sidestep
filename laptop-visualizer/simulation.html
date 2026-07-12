@@ -305,6 +305,27 @@
       box-shadow: 0 0 0 3px rgba(255, 93, 104, 0.08);
     }
 
+    .ai-mode-option {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin-top: 4px;
+      padding: 10px 12px;
+      border: 1px solid rgba(155, 140, 255, 0.28);
+      border-radius: 10px;
+      background: rgba(155, 140, 255, 0.06);
+      color: #c9c1ff;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 650;
+    }
+
+    .ai-mode-option input {
+      width: 16px;
+      height: 16px;
+      accent-color: #9b8cff;
+    }
+
     .form-error {
       display: none;
       margin: 10px 1px 0;
@@ -475,6 +496,36 @@
       color: #a9bdc8;
       font: 10px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
       white-space: pre-wrap;
+    }
+
+    .ai-context-copy {
+      margin: 0;
+      color: #a9bdc8;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .ai-context-textarea {
+      width: 100%;
+      min-height: 230px;
+      resize: vertical;
+      padding: 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: 9px;
+      outline: none;
+      background: #050d13;
+      color: var(--text);
+      font: 11px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    .ai-context-textarea:focus {
+      border-color: rgba(59, 224, 208, 0.68);
+      box-shadow: 0 0 0 3px rgba(59, 224, 208, 0.09);
+    }
+
+    .ai-context-actions {
+      display: flex;
+      justify-content: flex-end;
     }
 
     .preset-buttons {
@@ -1198,6 +1249,11 @@
 
         <p id="formError" class="form-error" role="alert"></p>
 
+        <label class="ai-mode-option" for="aiModeInput">
+          <input id="aiModeInput" type="checkbox">
+          Enable Gemini AI for this scenario
+        </label>
+
         <div class="controls">
           <button id="startButton" class="button primary" type="submit">Start simulation</button>
           <button id="pauseButton" class="button" type="button" disabled>Pause</button>
@@ -1312,6 +1368,21 @@
     </div>
   </dialog>
 
+  <dialog id="aiContextDialog" class="ai-decision-dialog" aria-labelledby="aiContextTitle">
+    <form id="aiContextForm">
+      <div class="ai-decision-header">
+        <h2 id="aiContextTitle">Add driving context</h2>
+      </div>
+      <div class="ai-decision-body">
+        <p id="aiContextCopy" class="ai-context-copy"></p>
+        <textarea id="aiContextInput" class="ai-context-textarea" maxlength="4000" required aria-label="Driving environment and hazard context"></textarea>
+        <div class="ai-context-actions">
+          <button class="button primary" type="submit">Send context to Gemini</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
   <script>
     (() => {
       'use strict';
@@ -1346,6 +1417,7 @@
       const startButton = document.getElementById('startButton');
       const pauseButton = document.getElementById('pauseButton');
       const resetButton = document.getElementById('resetButton');
+      const aiModeInput = document.getElementById('aiModeInput');
       const aiDecisionButton = document.getElementById('aiDecisionButton');
       const aiDecisionDialog = document.getElementById('aiDecisionDialog');
       const closeAiDecisionButton = document.getElementById('closeAiDecisionButton');
@@ -1354,6 +1426,10 @@
       const aiCar1Reasoning = document.getElementById('aiCar1Reasoning');
       const aiCar2Reasoning = document.getElementById('aiCar2Reasoning');
       const aiScenarioParameters = document.getElementById('aiScenarioParameters');
+      const aiContextDialog = document.getElementById('aiContextDialog');
+      const aiContextForm = document.getElementById('aiContextForm');
+      const aiContextCopy = document.getElementById('aiContextCopy');
+      const aiContextInput = document.getElementById('aiContextInput');
       const connectionDot = document.getElementById('connectionDot');
       const connectionText = document.getElementById('connectionText');
       const rxRate = document.getElementById('rxRate');
@@ -1411,6 +1487,8 @@
       let auditRenderedCount = 0;
       let auditSequence = 0;
       let lastConsensusAudit = '';
+      let selectedScenarioId = 'custom';
+      let pendingAiContextResolve = null;
       const camera = { x: 0, y: 0, scale: 8 };
 
       // AI Manager state
@@ -1464,10 +1542,35 @@ HAZARDS:
         }
       };
 
+      function cancelPendingAiContext() {
+        if (pendingAiContextResolve) {
+          const resolve = pendingAiContextResolve;
+          pendingAiContextResolve = null;
+          resolve(null);
+        }
+        if (aiContextDialog.open) aiContextDialog.close();
+      }
+
+      function requestScenarioContext(scenarioId) {
+        const preparedContext = SCENARIO_SURROUNDINGS[scenarioId] || '';
+        aiContextInput.value = preparedContext;
+        aiContextInput.placeholder = 'Describe the road layout, lanes, nearby traffic, pedestrians, obstacles, weather, visibility, and any safe escape routes.';
+        aiContextCopy.textContent = preparedContext
+          ? 'Vid 2 context is preloaded below. Review or edit it, then submit it to Gemini.'
+          : 'The simulation is paused. Describe the surroundings and hazards Gemini should consider before choosing a maneuver.';
+
+        return new Promise((resolve) => {
+          pendingAiContextResolve = resolve;
+          aiContextDialog.showModal();
+          window.requestAnimationFrame(() => aiContextInput.focus());
+        });
+      }
+
       /**
        * Resets the AI Manager state for a new scenario
        */
       function resetAiManager() {
+        cancelPendingAiContext();
         aiManager = {
           enabled: false,
           apiCallSent: false,
@@ -1494,7 +1597,7 @@ HAZARDS:
       function enableAiMode(scenarioId) {
         aiManager.enabled = true;
         aiManager.scenarioId = scenarioId;
-        aiManager.surroundings = SCENARIO_SURROUNDINGS[scenarioId] || 'No surroundings data available.';
+        aiManager.surroundings = SCENARIO_SURROUNDINGS[scenarioId] || '';
         addAudit('AI', 'AI mode enabled', `Scenario: ${scenarioId}; AI will analyze at TTC ≤ ${AI_EARLY_WARNING_TTC}s and take over when Gemini responds`);
         addActivity('AI', `AI mode enabled for ${scenarioId}`);
       }
@@ -1587,25 +1690,33 @@ HAZARDS:
             action: car2.action
           },
           ttc: latestTtc || 10,
-          surroundings: aiManager.surroundings,
+          surroundings: '',
           timestamp: new Date().toISOString(),
           distance: distance,
           relativeBearing: ((relativeBearing % 360) + 360) % 360,
           closingSpeed: closingSpeed
         };
 
-        addAudit('AI', 'Sending scenario to Gemini API', `TTC=${scenario.ttc.toFixed(2)}s, distance=${distance.toFixed(1)}m, closing=${closingSpeed.toFixed(1)}m/s`, 'CAR1');
-        addActivity('AI', 'Requesting AI decision...');
-
         if (simulationMode === 'RUNNING') {
           requestState.simulationPausedForAi = true;
           stopStream();
-          setSimulationMode('PAUSED', 'Waiting for Gemini collision-avoidance decision');
+          setSimulationMode('PAUSED', 'Waiting for driving context before contacting Gemini');
           pauseButton.disabled = true;
-          pauseButton.textContent = 'Waiting for AI';
-          addAudit('AI', 'Simulation paused for AI', 'Vehicle motion and telemetry are frozen until Gemini responds.');
-          addActivity('AI', 'Simulation paused while Gemini analyzes');
+          pauseButton.textContent = 'Context required';
+          addAudit('AI', 'Simulation paused for AI', 'Vehicle motion and telemetry are frozen while context is collected and Gemini analyzes.');
+          addActivity('AI', 'Simulation paused for driving context');
         }
+
+        const submittedContext = await requestScenarioContext(requestState.scenarioId);
+        if (aiManager !== requestState || submittedContext === null) return;
+
+        requestState.surroundings = submittedContext;
+        scenario.surroundings = submittedContext;
+        setSimulationMode('PAUSED', 'Context submitted; waiting for Gemini collision-avoidance decision');
+        pauseButton.textContent = 'Waiting for AI';
+        addAudit('AI', 'Driving context submitted', `${submittedContext.length} characters will be included with vehicle telemetry.`, 'CAR1');
+        addAudit('AI', 'Sending scenario to Gemini API', `TTC=${scenario.ttc.toFixed(2)}s, distance=${distance.toFixed(1)}m, closing=${closingSpeed.toFixed(1)}m/s`, 'CAR1');
+        addActivity('AI', 'Context submitted - requesting AI decision...');
 
         try {
           const response = await fetch('/api/ai-decision', {
@@ -1990,9 +2101,10 @@ HAZARDS:
 
       function beginSimulation(configuration) {
         stopStream();
-        const aiScenarioId = aiManager.enabled ? aiManager.scenarioId : null;
+        const aiEnabled = aiModeInput.checked;
+        const aiScenarioId = selectedScenarioId;
         resetAiManager();
-        if (aiScenarioId) enableAiMode(aiScenarioId);
+        if (aiEnabled) enableAiMode(aiScenarioId);
         acceptIncomingPackets = true;
         scenarioSequence = (scenarioSequence % 0xFFFF) + 1;
         activeTelemetryState = 'SIMULATED';
@@ -2990,6 +3102,23 @@ HAZARDS:
 
       pauseButton.addEventListener('click', pauseOrResume);
       resetButton.addEventListener('click', resetSimulation);
+      aiContextForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const submittedContext = aiContextInput.value.trim();
+        if (!submittedContext) {
+          aiContextInput.setCustomValidity('Describe the driving context before continuing.');
+          aiContextInput.reportValidity();
+          return;
+        }
+
+        aiContextInput.setCustomValidity('');
+        const resolve = pendingAiContextResolve;
+        pendingAiContextResolve = null;
+        aiContextDialog.close();
+        if (resolve) resolve(submittedContext);
+      });
+      aiContextInput.addEventListener('input', () => aiContextInput.setCustomValidity(''));
+      aiContextDialog.addEventListener('cancel', (event) => event.preventDefault());
       aiDecisionButton.addEventListener('click', () => aiDecisionDialog.showModal());
       closeAiDecisionButton.addEventListener('click', () => aiDecisionDialog.close());
       aiDecisionDialog.addEventListener('click', (event) => {
@@ -3011,12 +3140,13 @@ HAZARDS:
 
       presetVid1.addEventListener('click', () => {
         applyPreset(presetVid1Data);
-        resetAiManager(); // Disable AI mode for Vid1
+        selectedScenarioId = 'vid1';
+        aiModeInput.checked = false;
       });
       presetVid2.addEventListener('click', () => {
         applyPreset(presetVid2Data);
-        resetAiManager();
-        enableAiMode('vid2'); // Enable AI mode for Vid2
+        selectedScenarioId = 'vid2';
+        aiModeInput.checked = true;
       });
       window.addEventListener('keydown', (event) => {
         if (event.key === 'Escape' && auditPanel.classList.contains('open')) setAuditPanel(false);
