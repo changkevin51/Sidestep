@@ -19,7 +19,10 @@ Open <http://localhost:8000>. The visualizer connects to the same hostname on
 WebSocket port `8080`. When using a custom WebSocket port, open (for example)
 `http://localhost:8000/?wsPort=8081`.
 
-The default UDP destination is the limited broadcast address `255.255.255.255:12345`. The operating-system firewall must allow inbound and outbound UDP port `12345`. WebSocket injection accepts only loopback browser clients with the visualizer's HTTP origin and only validated `TELEMETRY,CAR1|CAR2,...,SIMULATED` frames.
+Reset stops the telemetry scheduler, clears both vehicles and all decision
+state, and ignores incoming scenario packets until Start is pressed again.
+
+The default UDP destination is the limited broadcast address `255.255.255.255:12345`. The operating-system firewall must allow inbound and outbound UDP port `12345`. WebSocket injection accepts only loopback browser clients with the visualizer's HTTP origin and only validated tagged `TELEMETRY` or `RESET` frames.
 
 Optional bridge environment variables:
 
@@ -35,10 +38,14 @@ Optional bridge environment variables:
 The browser emits one packet for each car every 50 ms:
 
 ```text
-TELEMETRY,car_id,latitude,longitude,heading,speed,width,length,SIMULATED
+TELEMETRY,car_id,latitude,longitude,heading,speed,width,length,SIMULATED_scenario
 ```
 
-Coordinates are decimal degrees, heading is degrees clockwise from north, speed is meters per second, and dimensions are meters. `SIMULATED` lets each Pi distinguish laptop-injected sensor data from its own telemetry.
+Reset emits `RESET,scenario_id` so both Pi runtimes immediately clear cached
+telemetry, proposals, and execution state. The per-run telemetry suffix provides
+the same boundary again on Start/Restart if that UDP reset packet was lost.
+
+Coordinates are decimal degrees, heading is degrees clockwise from north, speed is meters per second, and dimensions are meters. The `SIMULATED_` prefix lets each Pi distinguish laptop-injected sensor data, while the per-run suffix makes Start/Restart clear any prior proposal and execution state before the new values are evaluated.
 
 The primary packets consumed from the Pis are:
 
@@ -53,4 +60,4 @@ For compatibility with early PoC builds, the parser also tolerates `EXECUTE`, `S
 
 ## Loop behavior
 
-The bridge never sends a UDP-received packet back to UDP, and it never sends a browser-received packet directly to WebSocket clients. A browser-injected datagram can naturally be received once by the laptop's UDP socket and displayed, but there is no recursive echo path.
+The bridge never sends a UDP-received packet back to UDP, and it never sends a browser-received packet directly to WebSocket clients. If the host receives its own browser-injected UDP broadcast, the bridge suppresses that delayed copy instead of forwarding it back to the browser. External UDP packets continue to be forwarded normally.

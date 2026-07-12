@@ -91,9 +91,10 @@ approves an evasion plan.
 All messages are UTF-8 CSV datagrams on UDP `12345`:
 
 ```text
-TELEMETRY,car_id,latitude,longitude,heading,speed,width,length,state
+TELEMETRY,car_id,latitude,longitude,heading,speed,width,length,state_or_scenario
 PROPOSAL,sender_id,car_1_intended_action,car_2_intended_action
 EXECUTION,car_id,action,state,ttc
+RESET,scenario_id
 ```
 
 `car_1` and `car_2` in a proposal are the lexicographically ordered IDs, so both
@@ -106,6 +107,8 @@ UDP packet loss.
 
 - TTC is found with a 10-second, 50 ms OBB/SAT sweep in a local east/north
   coordinate frame.
+- Every Start/Restart uses a new scenario tag. Each Pi clears its prior
+  proposal, execution action, and cached car pair before evaluating that tag.
 - At TTC below 3 seconds, both cars brake only when both stopping-distance
   checks pass. Otherwise canonical car 1 swerves right and car 2 swerves left.
 - At TTC of 3 seconds or more, `evaluateSmartDecision(Car, Car)` is the explicit

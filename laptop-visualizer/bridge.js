@@ -25,7 +25,7 @@ function isLoopback(address) {
   return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
 }
 
-function validBrowserTelemetry(rawMessage) {
+function validBrowserPacket(rawMessage) {
   if (typeof rawMessage !== 'string' || rawMessage.length === 0
       || Buffer.byteLength(rawMessage, 'utf8') > MAX_PACKET_BYTES
       || rawMessage.includes('\0') || rawMessage.includes('\n') || rawMessage.includes('\r')) {
@@ -33,9 +33,15 @@ function validBrowserTelemetry(rawMessage) {
   }
 
   const fields = rawMessage.split(',');
-  if (fields.length !== 9 || fields.some((field) => field.length === 0 || field !== field.trim())
+  if (fields.some((field) => field.length === 0 || field !== field.trim())) {
+    return false;
+  }
+  if (fields.length === 2 && fields[0] === 'RESET') {
+    return /^[A-F0-9]{12}$/.test(fields[1]);
+  }
+  if (fields.length !== 9
       || fields[0] !== 'TELEMETRY' || !/^(CAR1|CAR2)$/.test(fields[1])
-      || fields[8] !== 'SIMULATED') {
+      || !/^SIMULATED_[A-F0-9]{12}$/.test(fields[8])) {
     return false;
   }
 
@@ -77,8 +83,15 @@ function error(message, detail) {
 
 // UDP packets travel in one direction only: UDP -> WebSocket. They are never
 // retransmitted to UDP here, which prevents a broadcast echo loop.
-udpReceiver.on('message', (packet) => {
+udpReceiver.on('message', (packet, remoteInfo) => {
   if (packet.length === 0 || packet.length > MAX_PACKET_BYTES) {
+    return;
+  }
+
+  // A host may receive its own UDP broadcast. The browser already owns and
+  // renders this state, so forwarding it back would introduce a delayed
+  // feedback packet that can rewind the simulation and survive a UI reset.
+  if (udpSenderReady && remoteInfo.port === udpSender.address().port) {
     return;
   }
 
@@ -133,7 +146,7 @@ webSockets.on('connection', (socket, request) => {
     }
 
     const rawMessage = data.toString('utf8');
-    if (!udpSenderReady || !validBrowserTelemetry(rawMessage)) return;
+    if (!udpSenderReady || !validBrowserPacket(rawMessage)) return;
     const packet = Buffer.from(rawMessage, 'utf8');
 
     udpSender.send(packet, UDP_PORT, BROADCAST_ADDRESS, (err) => {

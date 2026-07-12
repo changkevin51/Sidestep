@@ -66,6 +66,7 @@ struct Telemetry {
     double width_m;
     double length_m;
     std::string source_state;
+    std::string scenario_id;
     Clock::time_point received_at;
 
     Telemetry()
@@ -141,6 +142,7 @@ struct Runtime {
     bool clear_timer_active;
     Clock::time_point clear_since;
     bool network_send_failure_reported;
+    std::string scenario_id;
 };
 
 std::string trim(const std::string& input) {
@@ -220,6 +222,22 @@ bool validStateText(const std::string& state) {
     return validIdentifier(state);
 }
 
+std::string scenarioIdFromState(const std::string& state) {
+    const char* prefixes[] = {
+        "SIMULATED_", "SENSOR_", "INJECTED_", "MONITORING_",
+        "PROPOSING_", "AI_ANALYZING_", "EXECUTE_", "EMERGENCY_STOP_"
+    };
+    for (std::size_t index = 0U;
+         index < sizeof(prefixes) / sizeof(prefixes[0]); ++index) {
+        const std::string prefix(prefixes[index]);
+        if (state.compare(0U, prefix.size(), prefix) == 0) {
+            const std::string scenario_id = state.substr(prefix.size());
+            return validIdentifier(scenario_id) ? scenario_id : std::string();
+        }
+    }
+    return std::string();
+}
+
 bool parseTelemetry(const std::string& payload, Telemetry& telemetry) {
     std::vector<std::string> fields;
     // The topic has already been removed by V2VNetwork. The remaining fields
@@ -240,6 +258,7 @@ bool parseTelemetry(const std::string& payload, Telemetry& telemetry) {
         !parseFiniteDouble(fields[6], parsed.length_m)) {
         return false;
     }
+    parsed.scenario_id = scenarioIdFromState(parsed.source_state);
 
     if (parsed.latitude_deg < -90.0 || parsed.latitude_deg > 90.0 ||
         parsed.longitude_deg < -180.0 || parsed.longitude_deg > 180.0 ||
@@ -304,6 +323,13 @@ std::string safetyStateText(const Runtime& runtime) {
             return "EMERGENCY_STOP";
     }
     return "MONITORING";
+}
+
+std::string scenarioSafetyState(const Runtime& runtime) {
+    const std::string state = safetyStateText(runtime);
+    return runtime.scenario_id.empty()
+        ? state
+        : state + "_" + runtime.scenario_id;
 }
 
 std::string formatTelemetryPayload(const Telemetry& telemetry,
@@ -498,7 +524,37 @@ Assessment assessTelemetry(const Telemetry& first_telemetry,
 bool externalLocalTelemetry(const Telemetry& telemetry) {
     return telemetry.source_state == "SIMULATED" ||
            telemetry.source_state == "SENSOR" ||
-           telemetry.source_state == "INJECTED";
+           telemetry.source_state == "INJECTED" ||
+           telemetry.source_state.compare(0U, 10U, "SIMULATED_") == 0 ||
+           telemetry.source_state.compare(0U, 7U, "SENSOR_") == 0 ||
+           telemetry.source_state.compare(0U, 9U, "INJECTED_") == 0;
+}
+
+void resetForScenario(Runtime& runtime, const std::string& scenario_id) {
+    runtime.cars.clear();
+    runtime.state = SafetyState::MONITORING;
+    runtime.has_pending = false;
+    runtime.proposal_transmitted = false;
+    runtime.pending = PendingProposal();
+    runtime.execution_action.clear();
+    runtime.execution_ttc = 0.0;
+    runtime.clear_timer_active = false;
+    runtime.network_send_failure_reported = false;
+    runtime.scenario_id = scenario_id;
+}
+
+void processScenarioReset(Runtime& runtime, const std::string& payload) {
+    const std::string scenario_id = trim(payload);
+    if (!validIdentifier(scenario_id)) {
+        logLine("Discarded malformed RESET packet.");
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lock(runtime.mutex);
+        resetForScenario(runtime, scenario_id);
+    }
+    logLine("Simulator reset " + scenario_id +
+            "; cleared telemetry, proposal, and execution state.");
 }
 
 bool copyFreshPair(Runtime& runtime,
@@ -638,6 +694,7 @@ void processTelemetry(Runtime& runtime, const std::string& payload) {
         return;
     }
 
+    bool scenario_changed = false;
     {
         std::lock_guard<std::mutex> lock(runtime.mutex);
         // Reject our own rebroadcast so it cannot keep stale injected sensor
@@ -646,7 +703,24 @@ void processTelemetry(Runtime& runtime, const std::string& payload) {
             !externalLocalTelemetry(telemetry)) {
             return;
         }
+        if (telemetry.id == runtime.local_id &&
+            !telemetry.scenario_id.empty() &&
+            telemetry.scenario_id != runtime.scenario_id) {
+            resetForScenario(runtime, telemetry.scenario_id);
+            scenario_changed = true;
+        } else if (telemetry.id != runtime.local_id &&
+                   !runtime.scenario_id.empty() &&
+                   telemetry.scenario_id != runtime.scenario_id) {
+            // Do not combine a new local scenario with a delayed peer sample
+            // or rebroadcast from the prior run.
+            return;
+        }
         runtime.cars[telemetry.id] = telemetry;
+    }
+
+    if (scenario_changed) {
+        logLine("New simulator scenario " + telemetry.scenario_id +
+                "; cleared prior proposal and execution state.");
     }
 
     Telemetry first;
@@ -841,7 +915,7 @@ void broadcastLoop(v2v::V2VNetwork& network, Runtime& runtime) {
                 now - own->second.received_at <= kTelemetryFreshness) {
                 telemetry_payload =
                     formatTelemetryPayload(own->second,
-                                           safetyStateText(runtime));
+                                           scenarioSafetyState(runtime));
             }
             if (runtime.state == SafetyState::PROPOSING &&
                 runtime.has_pending) {
@@ -925,6 +999,8 @@ void listenAndProcessLoop(v2v::V2VNetwork& network, Runtime& runtime) {
                 processTelemetry(runtime, payload);
             } else if (topic == "PROPOSAL") {
                 event = processPeerProposal(runtime, network, payload);
+            } else if (topic == "RESET") {
+                processScenarioReset(runtime, payload);
             }
         }
         if (!event.occurred) {

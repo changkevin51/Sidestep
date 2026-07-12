@@ -699,6 +699,146 @@
       opacity: 0;
     }
 
+    .log-button {
+      position: absolute;
+      z-index: 5;
+      top: 17px;
+      right: 18px;
+      gap: 8px;
+      min-height: 34px;
+      background: rgba(8, 21, 29, 0.9);
+      backdrop-filter: blur(10px);
+    }
+
+    .log-button::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 9px rgba(99, 230, 156, 0.5);
+    }
+
+    .log-count {
+      min-width: 22px;
+      padding: 2px 5px;
+      border-radius: 8px;
+      background: rgba(142, 165, 179, 0.14);
+      color: var(--muted);
+      font: 600 9px ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    .audit-panel {
+      position: absolute;
+      z-index: 7;
+      top: 0;
+      right: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      width: min(620px, 92%);
+      height: 100%;
+      border-left: 1px solid var(--line-strong);
+      background: rgba(6, 15, 22, 0.97);
+      box-shadow: -24px 0 60px rgba(0, 0, 0, 0.4);
+      transform: translateX(102%);
+      visibility: hidden;
+      transition: transform 180ms ease, visibility 180ms ease;
+      backdrop-filter: blur(16px);
+    }
+
+    .audit-panel.open {
+      visibility: visible;
+      transform: translateX(0);
+    }
+
+    .audit-header {
+      padding: 17px 18px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .audit-title-row,
+    .audit-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .audit-title-row h2 {
+      margin: 0;
+      font-size: 15px;
+    }
+
+    .audit-title-row p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .audit-actions { justify-content: flex-end; }
+    .audit-actions .button { min-height: 32px; padding: 0 10px; }
+
+    .audit-body {
+      overflow: auto;
+      padding: 8px 0 24px;
+      scrollbar-color: rgba(142, 165, 179, 0.34) transparent;
+      scrollbar-width: thin;
+    }
+
+    .audit-empty {
+      margin: 24px 18px;
+      padding: 18px;
+      border: 1px dashed var(--line-strong);
+      border-radius: 10px;
+      color: var(--muted);
+      font-size: 11px;
+      text-align: center;
+    }
+
+    .audit-entry {
+      display: grid;
+      grid-template-columns: 84px 56px minmax(0, 1fr);
+      gap: 9px;
+      padding: 9px 18px;
+      border-bottom: 1px solid rgba(152, 187, 207, 0.07);
+      font: 500 10px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    .audit-entry time { color: #607887; }
+
+    .audit-kind {
+      align-self: start;
+      padding: 2px 5px;
+      border: 1px solid rgba(80, 167, 255, 0.2);
+      border-radius: 5px;
+      color: #82beff;
+      font-size: 8px;
+      font-weight: 750;
+      letter-spacing: 0.06em;
+      text-align: center;
+    }
+
+    .audit-entry[data-kind="VERIFY"] .audit-kind { color: var(--green); border-color: rgba(99, 230, 156, 0.25); }
+    .audit-entry[data-kind="ACTION"] .audit-kind,
+    .audit-entry[data-kind="EXEC"] .audit-kind { color: var(--yellow); border-color: rgba(255, 209, 102, 0.25); }
+    .audit-entry[data-kind="DROP"] .audit-kind,
+    .audit-entry[data-kind="ERROR"] .audit-kind { color: #ff8d95; border-color: rgba(255, 93, 104, 0.28); }
+
+    .audit-message {
+      min-width: 0;
+      color: #c2d2da;
+      overflow-wrap: anywhere;
+    }
+
+    .audit-message strong { color: var(--text); }
+
+    .audit-detail {
+      display: block;
+      margin-top: 2px;
+      color: #718895;
+      font-size: 9px;
+    }
+
     .empty-overlay .radar {
       position: relative;
       width: 52px;
@@ -778,6 +918,12 @@
 
       .workspace {
         min-height: 620px;
+      }
+
+      .audit-panel {
+        position: fixed;
+        top: 0;
+        height: 100vh;
       }
 
       .topbar {
@@ -979,6 +1125,9 @@
 
       <div id="canvasWrap" class="canvas-wrap">
         <canvas id="simulationCanvas" aria-label="Top-down visualization of both vehicles"></canvas>
+        <button id="logButton" class="button log-button" type="button" aria-controls="auditPanel" aria-expanded="false">
+          Detailed log <span id="logCount" class="log-count">0</span>
+        </button>
         <div class="map-badge"><i aria-hidden="true"></i><span id="referenceText">LOCAL ENU · awaiting reference</span></div>
         <div class="legend" aria-hidden="true">
           <span class="legend-item"><i></i> CAR1</span>
@@ -991,6 +1140,23 @@
           <p>Start a local scenario or wait for telemetry broadcasts from the two QNX vehicles.</p>
         </div>
       </div>
+      <aside id="auditPanel" class="audit-panel" aria-label="Detailed simulation log" aria-hidden="true">
+        <div class="audit-header">
+          <div class="audit-title-row">
+            <div>
+              <h2>Detailed event log</h2>
+              <p>Packets, per-car decisions, verification, and execution</p>
+            </div>
+            <div class="audit-actions">
+              <button id="clearLogButton" class="button" type="button">Clear</button>
+              <button id="closeLogButton" class="button" type="button" aria-label="Close detailed log">Close</button>
+            </div>
+          </div>
+        </div>
+        <div id="auditLogBody" class="audit-body" role="log" aria-live="off">
+          <div class="audit-empty">Events will appear here as the bridge and vehicles run.</div>
+        </div>
+      </aside>
     </section>
   </main>
 
@@ -1000,14 +1166,25 @@
 
       const EARTH_RADIUS_METERS = 6371000;
       const STREAM_INTERVAL_MS = 50;
+      const SIMULATION_STEP_SECONDS = 1 / 120;
       const CONSENSUS_WINDOW_MS = 150;
       const MAX_PACKET_CHARS = 4096;
       const MAX_TRAIL_POINTS = 180;
+      const MAX_AUDIT_ENTRIES = 2000;
+      const MAX_RENDERED_AUDIT_ENTRIES = 300;
       const requestedWsPort = Number(new URLSearchParams(window.location.search).get('wsPort'));
       const wsPort = Number.isInteger(requestedWsPort) && requestedWsPort > 0 && requestedWsPort <= 65535
         ? requestedWsPort : 8080;
       const WS_URL = `ws://${window.location.hostname || 'localhost'}:${wsPort}`;
       const CAR_COLORS = ['#3be0d0', '#ffaf5c', '#9b8cff', '#63e69c'];
+      const PAGE_SCENARIO_TOKEN = (() => {
+        const bytes = new Uint8Array(4);
+        if (window.crypto?.getRandomValues) {
+          window.crypto.getRandomValues(bytes);
+          return [...bytes].map((value) => value.toString(16).padStart(2, '0')).join('').toUpperCase();
+        }
+        return (Date.now() >>> 0).toString(16).padStart(8, '0').toUpperCase();
+      })();
 
       const canvas = document.getElementById('simulationCanvas');
       const canvasWrap = document.getElementById('canvasWrap');
@@ -1032,21 +1209,35 @@
       const vehicleList = document.getElementById('vehicleList');
       const vehicleCount = document.getElementById('vehicleCount');
       const activityLog = document.getElementById('activityLog');
+      const logButton = document.getElementById('logButton');
+      const logCount = document.getElementById('logCount');
+      const auditPanel = document.getElementById('auditPanel');
+      const auditLogBody = document.getElementById('auditLogBody');
+      const closeLogButton = document.getElementById('closeLogButton');
+      const clearLogButton = document.getElementById('clearLogButton');
 
       const cars = new Map();
       const proposals = new Map();
       const pendingActions = new Map();
       const packetTimes = [];
       const activityEntries = [];
+      const auditEntries = [];
 
       let webSocket = null;
       let reconnectTimer = null;
       let reconnectAttempt = 0;
       let streamTimer = null;
+      let streamGeneration = 0;
+      let nextStreamTime = 0;
       let simulationMode = 'READY';
+      let acceptIncomingPackets = true;
+      let scenarioSequence = 0;
+      let activeTelemetryState = 'SIMULATED';
       let worldReference = null;
-      let lastIntegrationTime = 0;
+      let lastLocalIntegrationTime = 0;
+      let localSimulationAccumulator = 0;
       let lastPassiveIntegrationTime = 0;
+      let lastFrameTime = 0;
       let lastUiUpdate = 0;
       let lastRateUpdate = 0;
       let viewportWidth = 1;
@@ -1056,6 +1247,10 @@
       let latestTtc = null;
       let consensusLockedUntil = 0;
       let cameraInitialized = false;
+      let auditRenderPending = false;
+      let auditRenderedCount = 0;
+      let auditSequence = 0;
+      let lastConsensusAudit = '';
       const camera = { x: 0, y: 0, scale: 8 };
 
       function clamp(value, minimum, maximum) {
@@ -1164,6 +1359,7 @@
           setConnection('online', 'Online');
           startButton.disabled = false;
           addActivity('LINK', 'WebSocket bridge connected');
+          addAudit('SYSTEM', 'Bridge connected', `WebSocket ${WS_URL} is open; telemetry can now be transmitted.`);
         });
 
         webSocket.addEventListener('message', async (event) => {
@@ -1181,6 +1377,7 @@
             handlePacket(raw);
           } catch (error) {
             addActivity('DROP', 'Unreadable WebSocket payload');
+            addAudit('ERROR', 'WebSocket payload could not be read', error instanceof Error ? error.message : String(error));
           }
         });
 
@@ -1194,6 +1391,7 @@
             addActivity('LINK', 'Injector paused until the bridge reconnects');
           }
           scheduleReconnect();
+          addAudit('SYSTEM', 'Bridge disconnected', 'Transmission is unavailable; reconnect has been scheduled.');
         });
 
         webSocket.addEventListener('error', () => {
@@ -1209,10 +1407,14 @@
       }
 
       function sendPacket(packet) {
+        const fields = String(packet).split(',');
+        const carId = fields[0] === 'TELEMETRY' && validVehicleId(fields[1]) ? fields[1] : '';
         if (!webSocket || webSocket.readyState !== WebSocket.OPEN) {
+          addAudit('DROP', 'Outgoing packet rejected', 'WebSocket is not open.', carId);
           return false;
         }
         webSocket.send(packet);
+        addAudit('TX', `${fields[0] || 'PACKET'} sent`, packet, carId);
         return true;
       }
 
@@ -1280,6 +1482,9 @@
 
       function beginSimulation(configuration) {
         stopStream();
+        acceptIncomingPackets = true;
+        scenarioSequence = (scenarioSequence % 0xFFFF) + 1;
+        activeTelemetryState = `SIMULATED_${PAGE_SCENARIO_TOKEN}${scenarioSequence.toString(16).padStart(4, '0').toUpperCase()}`;
         cars.clear();
         proposals.clear();
         pendingActions.clear();
@@ -1287,11 +1492,14 @@
         colorSequence = 0;
         latestTtc = null;
         consensusLockedUntil = 0;
+        lastLocalIntegrationTime = 0;
+        localSimulationAccumulator = 0;
         lastPassiveIntegrationTime = 0;
         ttcValue.textContent = '--';
         setMetricTone(ttcValue, 'accent');
         setConsensus('Listening', 'accent');
         setLatestAction('None', '');
+        lastConsensusAudit = '';
 
         worldReference = {
           latitude: (configuration[0].latitude + configuration[1].latitude) / 2,
@@ -1303,6 +1511,7 @@
           const car = makeCar(config, true);
           cars.set(car.id, car);
           appendTrail(car, true);
+          addAudit('SYSTEM', 'Vehicle initialized', `lat=${car.latitude.toFixed(6)}, lon=${car.longitude.toFixed(6)}, heading=${car.heading.toFixed(1)} deg, speed=${car.speed.toFixed(1)} m/s, size=${car.length.toFixed(1)} x ${car.width.toFixed(1)} m`, car.id);
         }
 
         cameraInitialized = false;
@@ -1310,6 +1519,7 @@
         pauseButton.textContent = 'Pause';
         startButton.textContent = 'Restart';
         setSimulationMode('RUNNING', 'Broadcasting simulated telemetry at 20 Hz');
+        addAudit('SYSTEM', 'Simulation started', `Scenario ${activeTelemetryState}; both cars will integrate motion and transmit TELEMETRY at 20 Hz.`);
         addActivity('SIM', 'Scenario started · state=SIMULATED');
         startStream();
         updateUi(true);
@@ -1317,24 +1527,40 @@
 
       function startStream() {
         stopStream();
-        lastIntegrationTime = performance.now();
-        streamTick();
-        streamTimer = window.setInterval(streamTick, STREAM_INTERVAL_MS);
+        lastLocalIntegrationTime = performance.now();
+        localSimulationAccumulator = 0;
+        nextStreamTime = lastLocalIntegrationTime;
+        runStreamLoop(streamGeneration);
       }
 
       function stopStream() {
+        streamGeneration += 1;
         if (streamTimer !== null) {
-          window.clearInterval(streamTimer);
+          window.clearTimeout(streamTimer);
           streamTimer = null;
         }
       }
 
+      function runStreamLoop(generation) {
+        if (generation !== streamGeneration || simulationMode !== 'RUNNING') return;
+        streamTimer = null;
+        streamTick();
+        if (generation !== streamGeneration || simulationMode !== 'RUNNING') return;
+
+        nextStreamTime += STREAM_INTERVAL_MS;
+        const now = performance.now();
+        if (nextStreamTime < now - STREAM_INTERVAL_MS) {
+          nextStreamTime = now + STREAM_INTERVAL_MS;
+        }
+        streamTimer = window.setTimeout(
+          () => runStreamLoop(generation),
+          Math.max(0, nextStreamTime - now),
+        );
+      }
+
       function streamTick() {
         if (simulationMode !== 'RUNNING') return;
-        const now = performance.now();
-        const elapsed = clamp((now - lastIntegrationTime) / 1000, 0, 2.0);
-        lastIntegrationTime = now;
-        integrateLocalCars(elapsed, now);
+        advanceLocalSimulation(performance.now());
 
         let sentEveryPacket = true;
         for (const car of cars.values()) {
@@ -1348,7 +1574,7 @@
             car.speed.toFixed(3),
             car.width.toFixed(3),
             car.length.toFixed(3),
-            'SIMULATED',
+            activeTelemetryState,
           ].join(',');
           sentEveryPacket = sendPacket(packet) && sentEveryPacket;
         }
@@ -1365,6 +1591,26 @@
           if (!car.isLocal) continue;
           integrateCarMotion(car, elapsed, now);
           car.lastSeenAt = Date.now();
+        }
+      }
+
+      function advanceLocalSimulation(now) {
+        if (simulationMode !== 'RUNNING') {
+          lastLocalIntegrationTime = 0;
+          localSimulationAccumulator = 0;
+          return;
+        }
+        if (lastLocalIntegrationTime === 0) {
+          lastLocalIntegrationTime = now;
+          return;
+        }
+
+        localSimulationAccumulator += clamp((now - lastLocalIntegrationTime) / 1000, 0, 0.25);
+        lastLocalIntegrationTime = now;
+        while (localSimulationAccumulator >= SIMULATION_STEP_SECONDS) {
+          const stepTime = now - (localSimulationAccumulator - SIMULATION_STEP_SECONDS) * 1000;
+          integrateLocalCars(SIMULATION_STEP_SECONDS, stepTime);
+          localSimulationAccumulator -= SIMULATION_STEP_SECONDS;
         }
       }
 
@@ -1406,23 +1652,33 @@
           setSimulationMode('PAUSED', 'Vehicle motion and telemetry injection are paused');
           pauseButton.textContent = 'Resume';
           addActivity('SIM', 'Scenario paused');
+          addAudit('SYSTEM', 'Simulation paused', 'Motion integration and outgoing telemetry stopped.');
         } else if (simulationMode === 'PAUSED') {
           setSimulationMode('RUNNING', 'Broadcasting simulated telemetry at 20 Hz');
           pauseButton.textContent = 'Pause';
           addActivity('SIM', 'Scenario resumed');
+          addAudit('SYSTEM', 'Simulation resumed', 'Motion integration and 20 Hz outgoing telemetry restarted.');
           startStream();
         }
       }
 
       function resetSimulation() {
         stopStream();
+        const scenarioId = activeTelemetryState.startsWith('SIMULATED_')
+          ? activeTelemetryState.slice('SIMULATED_'.length)
+          : `${PAGE_SCENARIO_TOKEN}0000`;
+        sendPacket(`RESET,${scenarioId}`);
+        acceptIncomingPackets = false;
         cars.clear();
         proposals.clear();
         pendingActions.clear();
         worldReference = null;
         latestTtc = null;
         consensusLockedUntil = 0;
+        lastLocalIntegrationTime = 0;
+        localSimulationAccumulator = 0;
         lastPassiveIntegrationTime = 0;
+        lastFrameTime = 0;
         cameraInitialized = false;
         pauseButton.disabled = true;
         pauseButton.textContent = 'Pause';
@@ -1433,21 +1689,36 @@
         setLatestAction('None', '');
         referenceText.textContent = 'LOCAL ENU · awaiting reference';
         setSimulationMode('READY', 'Configure two vehicles, then start the injector');
+        addAudit('SYSTEM', 'Simulation reset', 'Vehicle, proposal, pending-action, TTC, and consensus state cleared. Incoming scenario packets are ignored until the next start.');
         addActivity('SIM', 'Scenario reset');
         updateUi(true);
       }
 
       function handlePacket(rawPacket) {
         if (typeof rawPacket !== 'string' || rawPacket.length === 0 || rawPacket.length > MAX_PACKET_CHARS || rawPacket.includes('\0')) {
+          addAudit('DROP', 'Incoming packet failed envelope verification', `Expected 1-${MAX_PACKET_CHARS} text characters with no null bytes.`);
           return;
         }
 
         const packet = rawPacket.trim();
-        if (!packet || packet.includes('\n') || packet.includes('\r')) return;
+        if (!packet || packet.includes('\n') || packet.includes('\r')) {
+          addAudit('DROP', 'Incoming packet failed line verification', 'Empty or multi-line packets are not accepted.');
+          return;
+        }
         const fields = packet.split(',').map((field) => field.trim());
-        if (fields.length < 2 || fields.length > 24) return;
+        if (!acceptIncomingPackets) return;
+        const packetCarId = validVehicleId(fields[1]) ? fields[1] : '';
+        if (fields.length < 2 || fields.length > 24) {
+          addAudit('RX', `${fields[0] || 'UNKNOWN'} received`, packet, packetCarId);
+          addAudit('DROP', 'Incoming packet failed field-count verification', `Received ${fields.length}; allowed range is 2-24.`, packetCarId);
+          return;
+        }
 
         const type = fields[0].toUpperCase();
+        // During a local scenario, the browser's cars are authoritative. Delayed
+        // UDP echoes or physical telemetry with the same IDs must not rewind them.
+        if (type === 'TELEMETRY' && cars.get(fields[1])?.isLocal) return;
+        addAudit('RX', `${type || 'UNKNOWN'} received`, packet, packetCarId);
         packetTimes.push(performance.now());
         lastPacketValue.textContent = type;
 
@@ -1472,6 +1743,7 @@
             break;
           default:
             addActivity('RX', packet.slice(0, 100));
+            addAudit('VERIFY', 'Unknown packet type retained for inspection', `No parser is registered for ${type}.`, packetCarId);
             break;
         }
       }
@@ -1479,7 +1751,10 @@
       function parseTelemetry(fields) {
         // TELEMETRY,car_id,latitude,longitude,heading,speed,width,length,state
         if (fields.length !== 9 || !['CAR1', 'CAR2'].includes(fields[1])
-            || fields.slice(2, 8).some((field) => field === '')) return;
+            || fields.slice(2, 8).some((field) => field === '')) {
+          addAudit('DROP', 'TELEMETRY schema verification failed', 'Expected 9 fields, CAR1 or CAR2, and six non-empty numeric fields.', validVehicleId(fields[1]) ? fields[1] : '');
+          return;
+        }
         const parsed = {
           id: fields[1],
           latitude: Number(fields[2]),
@@ -1496,9 +1771,12 @@
             || !Number.isFinite(parsed.heading)
             || !finiteInRange(parsed.speed, 0, 120)
             || !finiteInRange(parsed.width, 0.3, 8)
-            || !finiteInRange(parsed.length, 0.5, 30)) {
+             || !finiteInRange(parsed.length, 0.5, 30)) {
+          addAudit('DROP', 'TELEMETRY range verification failed', `lat=${fields[2]}, lon=${fields[3]}, heading=${fields[4]}, speed=${fields[5]}, width=${fields[6]}, length=${fields[7]}`, parsed.id);
           return;
         }
+
+        addAudit('VERIFY', 'TELEMETRY accepted', `position=${parsed.latitude.toFixed(6)},${parsed.longitude.toFixed(6)}; heading=${normalizeHeading(parsed.heading).toFixed(1)} deg; speed=${parsed.speed.toFixed(2)} m/s; state=${parsed.state}`, parsed.id);
 
         if (!worldReference) {
           worldReference = { latitude: parsed.latitude, longitude: parsed.longitude };
@@ -1536,13 +1814,18 @@
       }
 
       function parseProposal(fields) {
-        if (fields.length !== 4 || !validVehicleId(fields[1])) return;
+        if (fields.length !== 4 || !validVehicleId(fields[1])) {
+          addAudit('DROP', 'PROPOSAL schema verification failed', 'Expected PROPOSAL,sender_id,car_1_action,car_2_action.');
+          return;
+        }
         const senderId = fields[1];
         const car1Action = normalizeAction(fields[2]);
         const car2Action = normalizeAction(fields[3]);
         const signature = `${car1Action}|${car2Action}`;
         proposals.set(senderId, { senderId, car1Action, car2Action, signature, receivedAt: Date.now() });
         addActivity('PLAN', `${senderId}: ${formatAction(car1Action)} / ${formatAction(car2Action)}`);
+        addAudit('ACTION', 'Proposed action for CAR1', `${senderId} proposes ${formatAction(car1Action)}.`, 'CAR1');
+        addAudit('ACTION', 'Proposed action for CAR2', `${senderId} proposes ${formatAction(car2Action)}.`, 'CAR2');
         evaluateConsensus();
       }
 
@@ -1552,6 +1835,11 @@
         const recent = [...proposals.values()].filter((proposal) => proposal.receivedAt >= cutoff);
         if (recent.length < 2) {
           setConsensus('Awaiting peer', 'warning');
+          const auditSignature = `awaiting:${recent.map((proposal) => proposal.senderId).join('|')}`;
+          if (auditSignature !== lastConsensusAudit) {
+            addAudit('VERIFY', 'Consensus waiting for peer', `${recent.length}/2 recent proposals are inside the ${CONSENSUS_WINDOW_MS} ms verification window.`);
+            lastConsensusAudit = auditSignature;
+          }
           return;
         }
 
@@ -1560,8 +1848,19 @@
         const insideWindow = Math.max(...receivedTimes) - Math.min(...receivedTimes) <= CONSENSUS_WINDOW_MS;
         if (signatures.size === 1 && insideWindow) {
           setConsensus('Matched', 'safe');
+          const delta = Math.max(...receivedTimes) - Math.min(...receivedTimes);
+          const auditSignature = `matched:${recent.map((proposal) => proposal.senderId).sort().join('|')}:${recent[0].signature}`;
+          if (auditSignature !== lastConsensusAudit) {
+            addAudit('VERIFY', 'Consensus verified: MATCH', `${recent.map((proposal) => proposal.senderId).join(' + ')} agree on CAR1=${formatAction(recent[0].car1Action)}, CAR2=${formatAction(recent[0].car2Action)}; arrival delta=${delta} ms.`);
+            lastConsensusAudit = auditSignature;
+          }
         } else {
           setConsensus('Mismatch', 'danger');
+          const auditSignature = `mismatch:${recent.map((proposal) => `${proposal.senderId}:${proposal.signature}`).sort().join('|')}`;
+          if (auditSignature !== lastConsensusAudit) {
+            addAudit('VERIFY', 'Consensus verification failed: MISMATCH', recent.map((proposal) => `${proposal.senderId} says CAR1=${formatAction(proposal.car1Action)}, CAR2=${formatAction(proposal.car2Action)}`).join('; '));
+            lastConsensusAudit = auditSignature;
+          }
         }
       }
 
@@ -1578,6 +1877,7 @@
             || state.toUpperCase().includes('EMERGENCY');
           setConsensus(emergency ? 'Emergency fallback' : 'Executing', emergency ? 'danger' : 'safe');
           consensusLockedUntil = Date.now() + 3000;
+          addAudit('EXEC', 'Execution command verified', `action=${formatAction(action)}; state=${state}; TTC=${Number.isFinite(ttc) ? `${ttc.toFixed(2)} s` : 'invalid/not supplied'}`, carId);
           addActivity('EXEC', `${carId}: ${formatAction(action)} · ${state}`);
           return;
         }
@@ -1591,13 +1891,18 @@
             applyAction('CAR1', actionOne, 'EXECUTE');
             applyAction('CAR2', actionTwo, 'EXECUTE');
             setConsensus('Executing', 'safe');
+            addAudit('EXEC', 'Joint execution decoded', `sender=${fields[1]}; action=${formatAction(actionOne)}`, 'CAR1');
+            addAudit('EXEC', 'Joint execution decoded', `sender=${fields[1]}; action=${formatAction(actionTwo)}`, 'CAR2');
             addActivity('EXEC', `${formatAction(actionOne)} / ${formatAction(actionTwo)}`);
           }
         }
       }
 
       function parseStatus(fields) {
-        if (fields.length < 3 || !validVehicleId(fields[1])) return;
+        if (fields.length < 3 || !validVehicleId(fields[1])) {
+          addAudit('DROP', 'STATUS schema verification failed', 'Expected at least STATUS,car_id,state.');
+          return;
+        }
         const carId = fields[1];
         const state = fields[2].slice(0, 32);
         const action = fields.length > 3 ? normalizeAction(fields[3]) : normalizeAction(state);
@@ -1605,6 +1910,7 @@
         if (isPhysicalAction(action)) applyAction(carId, action, state);
         if (Number.isFinite(possibleTtc)) setTtc(possibleTtc);
         addActivity('STATE', `${carId}: ${state}`);
+        addAudit('VERIFY', 'Vehicle status accepted', `state=${state}; action=${formatAction(action)}${Number.isFinite(possibleTtc) ? `; TTC=${possibleTtc.toFixed(2)} s` : ''}`, carId);
       }
 
       function parseTtcPacket(fields) {
@@ -1613,6 +1919,7 @@
           if (Number.isFinite(candidate) && candidate >= 0) {
             setTtc(candidate);
             addActivity('TTC', `${candidate.toFixed(2)} seconds`);
+            addAudit('VERIFY', 'TTC value accepted', `${candidate.toFixed(2)} seconds until predicted collision.`);
             return;
           }
         }
@@ -1627,12 +1934,16 @@
         }
         const car = cars.get(carId);
         if (car && car.action !== action) {
+          const priorAction = car.action;
           car.action = action;
           car.executionState = state || 'EXECUTE';
           car.actionStartedAt = performance.now();
           car.actionUntil = car.actionStartedAt + 2200;
+          addAudit('ACTION', 'Vehicle action changed', `${formatAction(priorAction)} -> ${formatAction(action)}; execution state=${state || 'EXECUTE'}.`, carId);
         } else if (car) {
           car.executionState = state || car.executionState;
+        } else {
+          addAudit('ACTION', 'Action queued until telemetry arrives', `action=${formatAction(action)}; execution state=${state || 'EXECUTE'}.`, carId);
         }
 
         if (action !== 'NONE') {
@@ -1716,6 +2027,7 @@
       }
 
       function drawFrame(timestamp) {
+        advanceLocalSimulation(timestamp);
         if (lastPassiveIntegrationTime > 0) {
           integratePassiveCars(clamp((timestamp - lastPassiveIntegrationTime) / 1000, 0, 0.1), timestamp);
         }
@@ -1728,10 +2040,13 @@
           Object.assign(camera, target);
           cameraInitialized = true;
         } else {
-          camera.x += (target.x - camera.x) * 0.055;
-          camera.y += (target.y - camera.y) * 0.055;
-          camera.scale += (target.scale - camera.scale) * 0.055;
+          const frameSeconds = lastFrameTime > 0 ? clamp((timestamp - lastFrameTime) / 1000, 0, 0.1) : 1 / 60;
+          const cameraBlend = 1 - Math.exp(-3.4 * frameSeconds);
+          camera.x += (target.x - camera.x) * cameraBlend;
+          camera.y += (target.y - camera.y) * cameraBlend;
+          camera.scale += (target.scale - camera.scale) * cameraBlend;
         }
+        lastFrameTime = timestamp;
 
         drawMapGrid();
         drawTrails();
@@ -1975,6 +2290,103 @@
         if (proposals.size > 0 && Date.now() >= consensusLockedUntil) evaluateConsensus();
       }
 
+      function createAuditRow(entry) {
+        const row = document.createElement('div');
+        row.className = 'audit-entry';
+        row.dataset.kind = entry.kind;
+
+        const time = document.createElement('time');
+        const milliseconds = String(entry.timestamp.getMilliseconds()).padStart(3, '0');
+        time.textContent = `${entry.timestamp.toLocaleTimeString([], { hour12: false })}.${milliseconds}`;
+        time.dateTime = entry.timestamp.toISOString();
+
+        const kind = document.createElement('span');
+        kind.className = 'audit-kind';
+        kind.textContent = entry.kind;
+
+        const message = document.createElement('span');
+        message.className = 'audit-message';
+        message.textContent = `${entry.carId ? `[${entry.carId}] ` : '[SYSTEM] '}${entry.message}`;
+        if (entry.detail) {
+          const detail = document.createElement('span');
+          detail.className = 'audit-detail';
+          detail.textContent = entry.detail;
+          message.append(detail);
+        }
+
+        row.append(time, kind, message);
+        return row;
+      }
+
+      function renderAuditLog(force = false) {
+        auditRenderPending = false;
+        if (!auditPanel.classList.contains('open')) return;
+        const wasAtBottom = auditLogBody.scrollHeight - auditLogBody.scrollTop - auditLogBody.clientHeight < 36;
+        if (force) {
+          auditLogBody.replaceChildren();
+          auditRenderedCount = 0;
+        }
+        if (auditRenderedCount === 0 && auditEntries.length > 0) {
+          auditLogBody.querySelector('.audit-empty')?.remove();
+        }
+        const fragment = document.createDocumentFragment();
+        const startIndex = force
+          ? Math.max(0, auditEntries.length - MAX_RENDERED_AUDIT_ENTRIES)
+          : auditRenderedCount;
+        for (let index = startIndex; index < auditEntries.length; index += 1) {
+          fragment.append(createAuditRow(auditEntries[index]));
+        }
+        auditLogBody.append(fragment);
+        while (auditLogBody.childElementCount > MAX_RENDERED_AUDIT_ENTRIES) {
+          auditLogBody.firstElementChild?.remove();
+        }
+        auditRenderedCount = auditEntries.length;
+        if (wasAtBottom || force) auditLogBody.scrollTop = auditLogBody.scrollHeight;
+      }
+
+      function addAudit(kind, message, detail = '', carId = '') {
+        auditEntries.push({
+          sequence: ++auditSequence,
+          kind: String(kind || 'SYSTEM').toUpperCase().slice(0, 10),
+          message: String(message).slice(0, 180),
+          detail: String(detail).slice(0, MAX_PACKET_CHARS),
+          carId: validVehicleId(carId) ? carId.toUpperCase() : '',
+          timestamp: new Date(),
+        });
+
+        if (auditEntries.length > MAX_AUDIT_ENTRIES) {
+          auditEntries.shift();
+          if (auditRenderedCount > 0) {
+            auditLogBody.firstElementChild?.remove();
+            auditRenderedCount -= 1;
+          }
+        }
+        logCount.textContent = auditEntries.length >= MAX_AUDIT_ENTRIES ? `${MAX_AUDIT_ENTRIES}+` : String(auditEntries.length);
+        if (auditPanel.classList.contains('open') && !auditRenderPending) {
+          auditRenderPending = true;
+          requestAnimationFrame(() => renderAuditLog(false));
+        }
+      }
+
+      function setAuditPanel(open) {
+        auditPanel.classList.toggle('open', open);
+        auditPanel.setAttribute('aria-hidden', String(!open));
+        logButton.setAttribute('aria-expanded', String(open));
+        if (open) {
+          renderAuditLog(true);
+          closeLogButton.focus();
+        } else {
+          logButton.focus();
+        }
+      }
+
+      function clearAuditLog() {
+        auditEntries.length = 0;
+        auditRenderedCount = 0;
+        auditLogBody.innerHTML = '<div class="audit-empty">The log is clear. New events will appear here.</div>';
+        logCount.textContent = '0';
+      }
+
       function addActivity(kind, message) {
         const timestamp = new Date();
         activityEntries.unshift({ kind, message: String(message).slice(0, 130), timestamp });
@@ -1997,10 +2409,16 @@
         if (!webSocket || webSocket.readyState !== WebSocket.OPEN) {
           formError.textContent = 'Connect to the local bridge before starting the simulation.';
           formError.classList.add('visible');
+          addAudit('DROP', 'Start request rejected', 'The local WebSocket bridge is not connected.');
           return;
         }
         const configuration = readConfiguration();
-        if (configuration) beginSimulation(configuration);
+        if (configuration) {
+          addAudit('VERIFY', 'Scenario configuration accepted', 'All CAR1 and CAR2 position, heading, speed, and dimension values passed range checks.');
+          beginSimulation(configuration);
+        } else {
+          addAudit('DROP', 'Scenario configuration rejected', formError.textContent || 'One or more vehicle fields failed validation.');
+        }
       });
 
       configForm.addEventListener('input', (event) => {
@@ -2012,6 +2430,12 @@
 
       pauseButton.addEventListener('click', pauseOrResume);
       resetButton.addEventListener('click', resetSimulation);
+      logButton.addEventListener('click', () => setAuditPanel(true));
+      closeLogButton.addEventListener('click', () => setAuditPanel(false));
+      clearLogButton.addEventListener('click', clearAuditLog);
+      window.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && auditPanel.classList.contains('open')) setAuditPanel(false);
+      });
       window.addEventListener('beforeunload', () => {
         stopStream();
         window.clearTimeout(reconnectTimer);
@@ -2026,6 +2450,7 @@
 
       resizeCanvas();
       startButton.disabled = true;
+      addAudit('SYSTEM', 'Console initialized', `Detailed logging enabled; retaining the latest ${MAX_AUDIT_ENTRIES} events.`);
       connectWebSocket();
       updateUi(true);
       requestAnimationFrame(drawFrame);
