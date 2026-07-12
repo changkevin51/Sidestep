@@ -1484,7 +1484,7 @@
         stopStream();
         acceptIncomingPackets = true;
         scenarioSequence = (scenarioSequence % 0xFFFF) + 1;
-        activeTelemetryState = `SIMULATED_${PAGE_SCENARIO_TOKEN}${scenarioSequence.toString(16).padStart(4, '0').toUpperCase()}`;
+        activeTelemetryState = 'SIMULATED';
         cars.clear();
         proposals.clear();
         pendingActions.clear();

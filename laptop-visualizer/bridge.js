@@ -9,7 +9,7 @@ const { WebSocket, WebSocketServer } = require('ws');
 const UDP_PORT = Number.parseInt(process.env.V2V_UDP_PORT || '12345', 10);
 const WS_PORT = Number.parseInt(process.env.V2V_WS_PORT || '8080', 10);
 const HTTP_PORT = Number.parseInt(process.env.V2V_HTTP_PORT || '8000', 10);
-const BROADCAST_ADDRESS = process.env.V2V_BROADCAST_ADDRESS || '255.255.255.255';
+const BROADCAST_ADDRESS = process.env.V2V_BROADCAST_ADDRESS || '192.168.137.255';
 const MAX_PACKET_BYTES = 4096;
 const MAX_WEBSOCKET_BACKLOG_BYTES = 64 * 1024;
 
@@ -41,7 +41,7 @@ function validBrowserPacket(rawMessage) {
   }
   if (fields.length !== 9
       || fields[0] !== 'TELEMETRY' || !/^(CAR1|CAR2)$/.test(fields[1])
-      || !/^SIMULATED_[A-F0-9]{12}$/.test(fields[8])) {
+      || fields[8] !== 'SIMULATED') {
     return false;
   }
 
@@ -59,6 +59,7 @@ const allowedOrigins = new Set([
   `http://localhost:${HTTP_PORT}`,
   `http://127.0.0.1:${HTTP_PORT}`,
   `http://[::1]:${HTTP_PORT}`,
+  `http://192.168.137.192:${HTTP_PORT}`, // <-- ADD THIS LINE
 ]);
 const udpReceiver = dgram.createSocket({ type: 'udp4', reuseAddr: true });
 const udpSender = dgram.createSocket('udp4');
