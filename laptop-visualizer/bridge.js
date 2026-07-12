@@ -12,6 +12,7 @@ const HTTP_PORT = Number.parseInt(process.env.V2V_HTTP_PORT || '8000', 10);
 const BROADCAST_ADDRESS = process.env.V2V_BROADCAST_ADDRESS || '255.255.255.255';
 const MAX_PACKET_BYTES = 4096;
 const MAX_WEBSOCKET_BACKLOG_BYTES = 64 * 1024;
+const MAX_INSTRUCTION_BODY_BYTES = 8 * 1024;
 
 function validPort(value) {
   return Number.isInteger(value) && value > 0 && value <= 65535;
@@ -47,6 +48,93 @@ function validBrowserTelemetry(rawMessage) {
     && numbers[3] >= 0 && numbers[3] <= 120
     && numbers[4] > 0 && numbers[4] <= 10
     && numbers[5] > 0 && numbers[5] <= 30;
+}
+
+function validIdentifier(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{1,32}$/.test(value);
+}
+
+function validInstructionText(value) {
+  return typeof value === 'string'
+    && value.length > 0
+    && value.length <= 128
+    && !value.includes(',')
+    && !value.includes('\0')
+    && !value.includes('\n')
+    && !value.includes('\r');
+}
+
+function parseInstructionRequest(bodyText) {
+  let parsed;
+  try {
+    parsed = JSON.parse(bodyText);
+  } catch (err) {
+    return null;
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    return null;
+  }
+
+  const seq = Number(parsed.seq);
+  const ttlMs = Number(parsed.ttlMs);
+  const targetId = parsed.targetId;
+  const action = parsed.action;
+  const reason = typeof parsed.reason === 'string' ? parsed.reason.trim() : '';
+
+  if (!Number.isInteger(seq) || seq <= 0 || !Number.isSafeInteger(seq)
+      || !Number.isInteger(ttlMs) || ttlMs <= 0 || ttlMs > 60000
+      || !validIdentifier(targetId) || !validIdentifier(action)
+      || (reason.length > 0 && !validInstructionText(reason))) {
+    return null;
+  }
+
+  return {
+    seq,
+    targetId,
+    action,
+    ttlMs,
+    reason,
+  };
+}
+
+function formatInstructionPacket(instruction) {
+  return [
+    'INSTRUCTION',
+    String(instruction.seq),
+    instruction.targetId,
+    instruction.action,
+    String(instruction.ttlMs),
+    instruction.reason || 'gemini',
+  ].join(',');
+}
+
+function readRequestBody(request) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    request.on('data', (chunk) => {
+      body += chunk;
+      if (Buffer.byteLength(body, 'utf8') > MAX_INSTRUCTION_BODY_BYTES) {
+        reject(new Error('request body too large'));
+        request.destroy();
+      }
+    });
+    request.on('end', () => resolve(body));
+    request.on('error', reject);
+  });
+}
+
+function broadcastInstruction(instruction) {
+  const packet = Buffer.from(formatInstructionPacket(instruction), 'utf8');
+  return new Promise((resolve, reject) => {
+    udpSender.send(packet, UDP_PORT, BROADCAST_ADDRESS, (err) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve();
+    });
+  });
 }
 
 const allowedOrigins = new Set([

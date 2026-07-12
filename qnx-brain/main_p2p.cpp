@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <cstdint>
 #include <functional>
 #include <iomanip>
 #include <iostream>
@@ -108,6 +109,18 @@ struct ExecutionEvent {
     std::string reason;
 
     ExecutionEvent() : occurred(false), ttc_seconds(0.0) {}
+};
+
+struct Instruction {
+    std::uint64_t seq;
+    std::string target_id;
+    std::string action;
+    std::string reason;
+    std::uint32_t ttl_ms;
+    Clock::time_point received_at;
+
+    Instruction()
+        : seq(0), ttl_ms(0), received_at(Clock::now()) {}
 };
 
 struct Runtime {
@@ -282,6 +295,41 @@ bool parseProposal(const std::string& payload,
     return true;
 }
 
+bool parseInstruction(const std::string& payload, Instruction& instruction) {
+    std::vector<std::string> fields;
+    if (!splitCsvExact(payload, 5U, fields) || !validIdentifier(fields[1]) ||
+        !validIdentifier(fields[2])) {
+        return false;
+    }
+
+    errno = 0;
+    char* end = 0;
+    const char* begin = fields[0].c_str();
+    const unsigned long long parsed_seq = std::strtoull(begin, &end, 10);
+    if (begin == end || end == 0 ||
+        end != begin + static_cast<std::ptrdiff_t>(fields[0].size()) ||
+        errno == ERANGE) {
+        return false;
+    }
+
+    errno = 0;
+    begin = fields[3].c_str();
+    const unsigned long parsed_ttl = std::strtoul(begin, &end, 10);
+    if (begin == end || end == 0 ||
+        end != begin + static_cast<std::ptrdiff_t>(fields[3].size()) ||
+        errno == ERANGE || parsed_ttl == 0UL || parsed_ttl > 60000UL) {
+        return false;
+    }
+
+    instruction.seq = static_cast<std::uint64_t>(parsed_seq);
+    instruction.target_id = fields[1];
+    instruction.action = fields[2];
+    instruction.ttl_ms = static_cast<std::uint32_t>(parsed_ttl);
+    instruction.reason = fields[4];
+    instruction.received_at = Clock::now();
+    return true;
+}
+
 std::string formatDouble(double value, int precision) {
     std::ostringstream output;
     output << std::fixed << std::setprecision(precision) << value;
@@ -330,9 +378,44 @@ std::string formatExecutionPayload(const Runtime& runtime) {
            formatDouble(runtime.execution_ttc, 3);
 }
 
+std::string formatInstructionPayload(const Instruction& instruction) {
+    std::ostringstream output;
+    output << instruction.seq << ','
+           << instruction.target_id << ','
+           << instruction.action << ','
+           << instruction.ttl_ms << ','
+           << instruction.reason;
+    return output.str();
+}
+
 bool actionsMatch(const JointActions& first, const JointActions& second) {
     return first.car1_action == second.car1_action &&
            first.car2_action == second.car2_action;
+}
+
+void applyInstruction(Runtime& runtime, const Instruction& instruction) {
+    if (instruction.target_id != runtime.local_id) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(runtime.mutex);
+    if (instruction.seq <= runtime.last_instruction_seq) {
+        return;
+    }
+
+    runtime.last_instruction_seq = instruction.seq;
+    runtime.latest_instruction = instruction;
+    runtime.has_instruction = true;
+
+    std::ostringstream message;
+    message << "Instruction received for " << instruction.target_id
+            << ": seq=" << instruction.seq
+            << ", action=" << instruction.action
+            << ", ttl_ms=" << instruction.ttl_ms;
+    if (!instruction.reason.empty()) {
+        message << ", reason=" << instruction.reason;
+    }
+    logLine(message.str());
 }
 
 bool proposalsMatch(const PendingProposal& first,
@@ -925,6 +1008,13 @@ void listenAndProcessLoop(v2v::V2VNetwork& network, Runtime& runtime) {
                 processTelemetry(runtime, payload);
             } else if (topic == "PROPOSAL") {
                 event = processPeerProposal(runtime, network, payload);
+            } else if (topic == "INSTRUCTION") {
+                Instruction instruction;
+                if (parseInstruction(payload, instruction)) {
+                    applyInstruction(runtime, instruction);
+                } else {
+                    logLine("Discarded malformed INSTRUCTION packet.");
+                }
             }
         }
         if (!event.occurred) {
