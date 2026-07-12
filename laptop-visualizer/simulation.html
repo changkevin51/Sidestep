@@ -663,7 +663,7 @@
       position: relative;
       z-index: 3;
       display: grid;
-      grid-template-columns: minmax(170px, 1.25fr) repeat(4, minmax(112px, 0.75fr));
+      grid-template-columns: minmax(170px, 1.25fr) repeat(5, minmax(105px, 0.72fr));
       gap: 10px;
       padding: 15px 18px;
       border-bottom: 1px solid var(--line);
@@ -786,6 +786,16 @@
       display: block;
       width: 100%;
       height: 100%;
+      cursor: default;
+      touch-action: none;
+    }
+
+    #simulationCanvas.vehicle-hover {
+      cursor: grab;
+    }
+
+    #simulationCanvas.vehicle-dragging {
+      cursor: grabbing;
     }
 
     .map-badge {
@@ -1067,8 +1077,7 @@
         grid-template-columns: minmax(190px, 1.4fr) repeat(2, minmax(118px, 0.7fr));
       }
 
-      .metric-card:nth-child(4),
-      .metric-card:nth-child(5) {
+      .metric-card:nth-child(n + 4) {
         display: none;
       }
     }
@@ -1159,8 +1168,8 @@
       <div class="brand">
         <div class="brand-mark" aria-hidden="true"></div>
         <div>
-          <h1>Cooperative Safety</h1>
-          <p>V2V field console</p>
+          <h1>SideStep</h1>
+          <p>V2V Collision Prevention</p>
         </div>
       </div>
 
@@ -1260,7 +1269,7 @@
           <button id="resetButton" class="button" type="button">Reset</button>
           <button id="aiDecisionButton" class="button ai-decision-button" type="button" hidden>View AI decision</button>
         </div>
-        <p class="helper-copy">Streams two <code>TELEMETRY</code> datagrams at 20 Hz through the local bridge. Heading is clockwise from true north.</p>
+        <p class="helper-copy">Drag either vehicle on the map to set its coordinates. Telemetry streams at 20 Hz; heading is clockwise from true north.</p>
       </form>
 
       <div class="section-heading">
@@ -1295,6 +1304,10 @@
           <strong id="ttcValue" class="accent">--</strong>
         </div>
         <div class="metric-card">
+          <small>Local collision check</small>
+          <strong id="collisionValue" class="accent" aria-live="polite">Position cars</strong>
+        </div>
+        <div class="metric-card">
           <small>Consensus</small>
           <strong id="consensusValue">Idle</strong>
         </div>
@@ -1309,7 +1322,7 @@
       </header>
 
       <div id="canvasWrap" class="canvas-wrap">
-        <canvas id="simulationCanvas" aria-label="Top-down visualization of both vehicles"></canvas>
+        <canvas id="simulationCanvas" aria-label="Top-down visualization of both vehicles. Drag a vehicle to update its latitude and longitude."></canvas>
         <button id="logButton" class="button log-button" type="button" aria-controls="auditPanel" aria-expanded="false">
           Detailed log <span id="logCount" class="log-count">0</span>
         </button>
@@ -1437,6 +1450,7 @@
       const simulationStateElement = document.getElementById('simulationState');
       const simulationDetail = document.getElementById('simulationDetail');
       const ttcValue = document.getElementById('ttcValue');
+      const collisionValue = document.getElementById('collisionValue');
       const consensusValue = document.getElementById('consensusValue');
       const actionValue = document.getElementById('actionValue');
       const lastPacketValue = document.getElementById('lastPacketValue');
@@ -1488,6 +1502,8 @@
       let auditSequence = 0;
       let lastConsensusAudit = '';
       let selectedScenarioId = 'custom';
+      let draggedVehicleId = null;
+      let collisionPrediction = null;
       let pendingAiContextResolve = null;
       const camera = { x: 0, y: 0, scale: 8 };
 
@@ -1945,6 +1961,57 @@ HAZARDS:
         setMetricTone(ttcValue, value < 3 ? 'danger' : value < 6 ? 'warning' : 'safe');
       }
 
+      function calculateCollisionPrediction() {
+        const car1 = cars.get('CAR1');
+        const car2 = cars.get('CAR2');
+        if (!car1 || !car2 || !worldReference) return null;
+
+        const first = toLocalMeters(car1.latitude, car1.longitude);
+        const second = toLocalMeters(car2.latitude, car2.longitude);
+        const firstHeading = car1.heading * Math.PI / 180;
+        const secondHeading = car2.heading * Math.PI / 180;
+        const relativePosition = { x: second.x - first.x, y: second.y - first.y };
+        const relativeVelocity = {
+          x: Math.sin(secondHeading) * car2.speed - Math.sin(firstHeading) * car1.speed,
+          y: Math.cos(secondHeading) * car2.speed - Math.cos(firstHeading) * car1.speed,
+        };
+        const velocitySquared = relativeVelocity.x ** 2 + relativeVelocity.y ** 2;
+        const currentDistance = Math.hypot(relativePosition.x, relativePosition.y);
+        const collisionDistance = (
+          Math.hypot(car1.length, car1.width) + Math.hypot(car2.length, car2.width)
+        ) / 2;
+        const rawClosestTime = velocitySquared > 0.000001
+          ? -(relativePosition.x * relativeVelocity.x + relativePosition.y * relativeVelocity.y) / velocitySquared
+          : 0;
+        const timeToClosest = clamp(rawClosestTime, 0, 30);
+        const closestDistance = Math.hypot(
+          relativePosition.x + relativeVelocity.x * timeToClosest,
+          relativePosition.y + relativeVelocity.y * timeToClosest,
+        );
+        const isOverlapping = currentDistance <= collisionDistance;
+        const willCollide = isOverlapping || (rawClosestTime >= 0 && rawClosestTime <= 30 && closestDistance <= collisionDistance);
+
+        return { willCollide, timeToCollision: willCollide ? (isOverlapping ? 0 : rawClosestTime) : null, closestDistance };
+      }
+
+      function updateCollisionIndicator() {
+        collisionPrediction = calculateCollisionPrediction();
+        if (!collisionPrediction) {
+          collisionValue.textContent = 'Position cars';
+          setMetricTone(collisionValue, 'accent');
+          return;
+        }
+        if (collisionPrediction.willCollide) {
+          collisionValue.textContent = collisionPrediction.timeToCollision <= 0.05
+            ? 'Collision now'
+            : `Predicted · ${collisionPrediction.timeToCollision.toFixed(1)} s`;
+          setMetricTone(collisionValue, 'danger');
+        } else {
+          collisionValue.textContent = `Clear · ${collisionPrediction.closestDistance.toFixed(1)} m`;
+          setMetricTone(collisionValue, 'safe');
+        }
+      }
+
       function setConsensus(label, tone) {
         consensusValue.textContent = label;
         setMetricTone(consensusValue, tone);
@@ -2099,6 +2166,72 @@ HAZARDS:
         };
       }
 
+      function applyConfigurationToMap(configuration, resetView = false) {
+        if (!configuration) return;
+        worldReference = {
+          latitude: (configuration[0].latitude + configuration[1].latitude) / 2,
+          longitude: (configuration[0].longitude + configuration[1].longitude) / 2,
+        };
+        updateReferenceLabel();
+
+        for (const config of configuration) {
+          const existing = cars.get(config.id);
+          if (existing?.isLocal) {
+            Object.assign(existing, config, { heading: normalizeHeading(config.heading), lastSeenAt: Date.now() });
+            existing.trail = [];
+            appendTrail(existing, true);
+          } else if (simulationMode !== 'RUNNING') {
+            const car = makeCar(config, true);
+            car.telemetryState = 'CONFIGURED';
+            cars.set(car.id, car);
+            appendTrail(car, true);
+          }
+        }
+        if (resetView) cameraInitialized = false;
+        updateCollisionIndicator();
+        updateUi(true);
+      }
+
+      function readConfigurationSilently() {
+        const result = [];
+        for (const id of ['CAR1', 'CAR2']) {
+          const vehicle = { id };
+          for (const field of ['latitude', 'longitude', 'heading', 'speed', 'width', 'length']) {
+            const input = document.querySelector(`input[data-car="${id}"][data-field="${field}"]`);
+            vehicle[field] = input?.valueAsNumber;
+          }
+          if (!finiteInRange(vehicle.latitude, -90, 90)
+              || !finiteInRange(vehicle.longitude, -180, 180)
+              || !finiteInRange(vehicle.heading, 0, 359.999)
+              || !finiteInRange(vehicle.speed, 0, 80)
+              || !finiteInRange(vehicle.width, 0.5, 4)
+              || !finiteInRange(vehicle.length, 1, 20)) return null;
+          result.push(vehicle);
+        }
+        return result;
+      }
+
+      function applyInputToMap(input) {
+        const configuration = readConfigurationSilently();
+        if (!configuration) return;
+        const car = cars.get(input.dataset.car);
+        if (!car?.isLocal) {
+          applyConfigurationToMap(configuration);
+          return;
+        }
+
+        const configuredCar = configuration.find((candidate) => candidate.id === car.id);
+        const field = input.dataset.field;
+        car[field] = field === 'heading' ? normalizeHeading(configuredCar[field]) : configuredCar[field];
+        car.lastSeenAt = Date.now();
+        if (field === 'latitude' || field === 'longitude') {
+          car.trail = [];
+          appendTrail(car, true);
+        }
+        updateCollisionIndicator();
+        updateUi(true);
+      }
+
       function beginSimulation(configuration) {
         stopStream();
         const aiEnabled = aiModeInput.checked;
@@ -2211,7 +2344,7 @@ HAZARDS:
 
       function integrateLocalCars(elapsed, now) {
         for (const car of cars.values()) {
-          if (!car.isLocal) continue;
+          if (!car.isLocal || car.id === draggedVehicleId) continue;
           integrateCarMotion(car, elapsed, now);
           car.lastSeenAt = Date.now();
         }
@@ -2319,6 +2452,7 @@ HAZARDS:
         pendingActions.clear();
         worldReference = null;
         latestTtc = null;
+        collisionPrediction = null;
         consensusLockedUntil = 0;
         lastLocalIntegrationTime = 0;
         localSimulationAccumulator = 0;
@@ -2332,6 +2466,7 @@ HAZARDS:
         setMetricTone(ttcValue, 'accent');
         setConsensus('Idle', '');
         setLatestAction('None', '');
+        updateCollisionIndicator();
         referenceText.textContent = 'LOCAL ENU · awaiting reference';
         setSimulationMode('READY', 'Configure two vehicles, then start the injector');
         resetAiManager(); // Reset AI state
@@ -2698,6 +2833,59 @@ HAZARDS:
         };
       }
 
+      function screenToWorld(x, y) {
+        return {
+          x: camera.x + (x - viewportWidth / 2) / camera.scale,
+          y: camera.y - (y - viewportHeight / 2) / camera.scale,
+        };
+      }
+
+      function localMetersToCoordinates(point) {
+        const latitude = worldReference.latitude + (point.y / EARTH_RADIUS_METERS) * 180 / Math.PI;
+        const latitudeCosine = Math.max(0.000001, Math.abs(Math.cos(worldReference.latitude * Math.PI / 180)));
+        const longitude = worldReference.longitude + (point.x / (EARTH_RADIUS_METERS * latitudeCosine)) * 180 / Math.PI;
+        return { latitude: clamp(latitude, -89.999999, 89.999999), longitude: ((longitude + 540) % 360) - 180 };
+      }
+
+      function pointerPosition(event) {
+        const bounds = canvas.getBoundingClientRect();
+        return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+      }
+
+      function vehicleAtScreenPoint(point) {
+        let match = null;
+        let closest = Infinity;
+        for (const car of cars.values()) {
+          if (!car.isLocal) continue;
+          const screen = worldToScreen(toLocalMeters(car.latitude, car.longitude));
+          const hitRadius = Math.max(18, Math.min(36, Math.max(car.width, car.length) * clamp(camera.scale, 3.2, 13) * 0.65));
+          const distance = Math.hypot(point.x - screen.x, point.y - screen.y);
+          if (distance <= hitRadius && distance < closest) {
+            match = car;
+            closest = distance;
+          }
+        }
+        return match;
+      }
+
+      function updateDraggedVehicle(event) {
+        const car = cars.get(draggedVehicleId);
+        if (!car || !worldReference) return;
+        const pointer = pointerPosition(event);
+        const coordinates = localMetersToCoordinates(screenToWorld(pointer.x, pointer.y));
+        car.latitude = coordinates.latitude;
+        car.longitude = coordinates.longitude;
+        car.lastSeenAt = Date.now();
+        car.trail = [];
+        appendTrail(car, true);
+        const latitudeInput = document.querySelector(`input[data-car="${car.id}"][data-field="latitude"]`);
+        const longitudeInput = document.querySelector(`input[data-car="${car.id}"][data-field="longitude"]`);
+        latitudeInput.value = car.latitude.toFixed(7);
+        longitudeInput.value = car.longitude.toFixed(7);
+        updateCollisionIndicator();
+        updateUi(true);
+      }
+
       function drawFrame(timestamp) {
         advanceLocalSimulation(timestamp);
         if (lastPassiveIntegrationTime > 0) {
@@ -2711,7 +2899,7 @@ HAZARDS:
         if (!cameraInitialized) {
           Object.assign(camera, target);
           cameraInitialized = true;
-        } else {
+        } else if (!draggedVehicleId) {
           const frameSeconds = lastFrameTime > 0 ? clamp((timestamp - lastFrameTime) / 1000, 0, 0.1) : 1 / 60;
           const cameraBlend = 1 - Math.exp(-3.4 * frameSeconds);
           camera.x += (target.x - camera.x) * cameraBlend;
@@ -2918,6 +3106,7 @@ HAZARDS:
           }
         }
         emptyOverlay.classList.toggle('hidden', cars.size > 0);
+        updateCollisionIndicator();
         vehicleCount.textContent = `${cars.size} tracked`;
 
         if (cars.size === 0) {
@@ -3097,7 +3286,43 @@ HAZARDS:
         if (event.target.matches('input')) {
           event.target.classList.remove('invalid');
           formError.classList.remove('visible');
+          if (event.target.matches('input[data-car]')) {
+            selectedScenarioId = 'custom';
+            applyInputToMap(event.target);
+          }
         }
+      });
+
+      canvas.addEventListener('pointerdown', (event) => {
+        const car = vehicleAtScreenPoint(pointerPosition(event));
+        if (!car) return;
+        draggedVehicleId = car.id;
+        canvas.setPointerCapture(event.pointerId);
+        canvas.classList.remove('vehicle-hover');
+        canvas.classList.add('vehicle-dragging');
+        updateDraggedVehicle(event);
+        event.preventDefault();
+      });
+      canvas.addEventListener('pointermove', (event) => {
+        if (draggedVehicleId) {
+          updateDraggedVehicle(event);
+          event.preventDefault();
+          return;
+        }
+        canvas.classList.toggle('vehicle-hover', Boolean(vehicleAtScreenPoint(pointerPosition(event))));
+      });
+      function finishVehicleDrag(event) {
+        if (!draggedVehicleId) return;
+        const carId = draggedVehicleId;
+        draggedVehicleId = null;
+        canvas.classList.remove('vehicle-dragging');
+        if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+        addActivity('MAP', `${carId} position updated by drag`);
+      }
+      canvas.addEventListener('pointerup', finishVehicleDrag);
+      canvas.addEventListener('pointercancel', finishVehicleDrag);
+      canvas.addEventListener('pointerleave', () => {
+        if (!draggedVehicleId) canvas.classList.remove('vehicle-hover');
       });
 
       pauseButton.addEventListener('click', pauseOrResume);
@@ -3136,6 +3361,7 @@ HAZARDS:
           const el = document.getElementById(id);
           if (el) el.value = value;
         }
+        applyConfigurationToMap(readConfigurationSilently(), true);
       }
 
       presetVid1.addEventListener('click', () => {
@@ -3164,6 +3390,7 @@ HAZARDS:
       }
 
       resizeCanvas();
+      applyConfigurationToMap(readConfigurationSilently(), true);
       startButton.disabled = true;
       addAudit('SYSTEM', 'Console initialized', `Detailed logging enabled; retaining the latest ${MAX_AUDIT_ENTRIES} events.`);
       connectWebSocket();
