@@ -5,6 +5,7 @@ const fs = require('fs');
 const http = require('http');
 const path = require('path');
 const { WebSocket, WebSocketServer } = require('ws');
+const aiService = require('./ai-service.js');
 
 const UDP_PORT = Number.parseInt(process.env.V2V_UDP_PORT || '12345', 10);
 const WS_PORT = Number.parseInt(process.env.V2V_WS_PORT || '8080', 10);
@@ -173,11 +174,84 @@ webSockets.on('error', (err) => {
 // A tiny static server keeps setup to one command and avoids browser file://
 // restrictions. It deliberately serves only the visualizer page.
 const visualizerPath = path.join(__dirname, 'simulation.html');
-const httpServer = http.createServer((request, response) => {
+
+// Helper to parse JSON body from request
+function parseJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', chunk => { body += chunk.toString(); });
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(body));
+      } catch (err) {
+        reject(new Error('Invalid JSON'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+const httpServer = http.createServer(async (request, response) => {
   const requestPath = (request.url || '/').split('?')[0];
+
+  // CORS headers for local development
+  response.setHeader('Access-Control-Allow-Origin', '*');
+  response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (request.method === 'OPTIONS') {
+    response.writeHead(204);
+    response.end();
+    return;
+  }
+
   if (requestPath === '/favicon.ico') {
     response.writeHead(204);
     response.end();
+    return;
+  }
+
+  // AI Decision API endpoint
+  if (requestPath === '/api/ai-decision' && request.method === 'POST') {
+    try {
+      const scenario = await parseJsonBody(request);
+      log(`AI decision requested for TTC: ${scenario.ttc?.toFixed(2)}s`);
+
+      const decision = await aiService.getAiDecision(scenario);
+
+      if (!aiService.validateDecision(decision)) {
+        error('Invalid AI decision received', decision);
+        response.writeHead(400, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ error: 'Invalid AI decision format', decision }));
+        return;
+      }
+
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify(decision));
+      log(`AI decision sent: CAR1=${decision.car1.action}, CAR2=${decision.car2.action}`);
+    } catch (err) {
+      error('AI decision request failed', err);
+      response.writeHead(500, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ error: err.message }));
+    }
+    return;
+  }
+
+  // AI config status endpoint
+  if (requestPath === '/api/ai-config' && request.method === 'GET') {
+    try {
+      const config = aiService.loadConfig();
+      const isValid = config.geminiApiKey && config.geminiApiKey !== 'YOUR_GEMINI_API_KEY_HERE';
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({
+        configured: isValid,
+        model: config.geminiModel,
+        message: isValid ? 'AI is configured' : 'Please set your Gemini API key in config.json'
+      }));
+    } catch (err) {
+      response.writeHead(500, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ configured: false, error: err.message }));
+    }
     return;
   }
 

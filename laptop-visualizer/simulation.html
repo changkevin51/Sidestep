@@ -373,6 +373,110 @@
       background: linear-gradient(135deg, rgba(50, 215, 201, 0.98), rgba(44, 167, 181, 0.98));
     }
 
+    [hidden] { display: none !important; }
+
+    .ai-decision-button {
+      grid-column: 1 / -1;
+      border-color: rgba(155, 140, 255, 0.5);
+      color: #c9c1ff;
+    }
+
+    .ai-decision-dialog {
+      width: min(680px, calc(100vw - 32px));
+      max-height: min(760px, calc(100vh - 32px));
+      padding: 0;
+      overflow: hidden;
+      border: 1px solid rgba(142, 165, 179, 0.28);
+      border-radius: 14px;
+      background: #09151d;
+      color: var(--text);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.62);
+    }
+
+    .ai-decision-dialog::backdrop {
+      background: rgba(1, 7, 11, 0.76);
+      backdrop-filter: blur(5px);
+    }
+
+    .ai-decision-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .ai-decision-header h2,
+    .ai-vehicle-decision h3 {
+      margin: 0;
+    }
+
+    .ai-decision-body {
+      display: grid;
+      gap: 12px;
+      max-height: calc(100vh - 110px);
+      padding: 16px 18px 20px;
+      overflow: auto;
+    }
+
+    .ai-vehicle-decision {
+      padding: 13px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(5, 13, 19, 0.54);
+    }
+
+    .ai-parameter-list {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin: 11px 0;
+    }
+
+    .ai-parameter-list div {
+      min-width: 0;
+      padding: 8px;
+      border-radius: 7px;
+      background: rgba(142, 165, 179, 0.08);
+    }
+
+    .ai-parameter-list dt {
+      color: var(--muted);
+      font-size: 9px;
+      text-transform: uppercase;
+    }
+
+    .ai-parameter-list dd {
+      margin: 4px 0 0;
+      overflow-wrap: anywhere;
+      font: 650 11px ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    .ai-reasoning {
+      margin: 0;
+      color: #b7c8d1;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .ai-scenario-details summary {
+      cursor: pointer;
+      color: var(--cyan);
+      font-size: 11px;
+    }
+
+    .ai-scenario-details pre {
+      overflow: auto;
+      max-height: 240px;
+      padding: 12px;
+      border-radius: 8px;
+      background: #050d13;
+      color: #a9bdc8;
+      font: 10px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+      white-space: pre-wrap;
+    }
+
     .preset-buttons {
       display: flex;
       gap: 6px;
@@ -1098,6 +1202,7 @@
           <button id="startButton" class="button primary" type="submit">Start simulation</button>
           <button id="pauseButton" class="button" type="button" disabled>Pause</button>
           <button id="resetButton" class="button" type="button">Reset</button>
+          <button id="aiDecisionButton" class="button ai-decision-button" type="button" hidden>View AI decision</button>
         </div>
         <p class="helper-copy">Streams two <code>TELEMETRY</code> datagrams at 20 Hz through the local bridge. Heading is clockwise from true north.</p>
       </form>
@@ -1184,6 +1289,29 @@
     </section>
   </main>
 
+  <dialog id="aiDecisionDialog" class="ai-decision-dialog" aria-labelledby="aiDecisionTitle">
+    <div class="ai-decision-header">
+      <h2 id="aiDecisionTitle">Gemini decision</h2>
+      <button id="closeAiDecisionButton" class="button" type="button">Close</button>
+    </div>
+    <div class="ai-decision-body">
+      <section class="ai-vehicle-decision" aria-labelledby="aiCar1Title">
+        <h3 id="aiCar1Title">CAR1</h3>
+        <dl id="aiCar1Parameters" class="ai-parameter-list"></dl>
+        <p id="aiCar1Reasoning" class="ai-reasoning"></p>
+      </section>
+      <section class="ai-vehicle-decision" aria-labelledby="aiCar2Title">
+        <h3 id="aiCar2Title">CAR2</h3>
+        <dl id="aiCar2Parameters" class="ai-parameter-list"></dl>
+        <p id="aiCar2Reasoning" class="ai-reasoning"></p>
+      </section>
+      <details class="ai-scenario-details">
+        <summary>Scenario parameters sent to Gemini</summary>
+        <pre id="aiScenarioParameters"></pre>
+      </details>
+    </div>
+  </dialog>
+
   <script>
     (() => {
       'use strict';
@@ -1218,6 +1346,14 @@
       const startButton = document.getElementById('startButton');
       const pauseButton = document.getElementById('pauseButton');
       const resetButton = document.getElementById('resetButton');
+      const aiDecisionButton = document.getElementById('aiDecisionButton');
+      const aiDecisionDialog = document.getElementById('aiDecisionDialog');
+      const closeAiDecisionButton = document.getElementById('closeAiDecisionButton');
+      const aiCar1Parameters = document.getElementById('aiCar1Parameters');
+      const aiCar2Parameters = document.getElementById('aiCar2Parameters');
+      const aiCar1Reasoning = document.getElementById('aiCar1Reasoning');
+      const aiCar2Reasoning = document.getElementById('aiCar2Reasoning');
+      const aiScenarioParameters = document.getElementById('aiScenarioParameters');
       const connectionDot = document.getElementById('connectionDot');
       const connectionText = document.getElementById('connectionText');
       const rxRate = document.getElementById('rxRate');
@@ -1276,6 +1412,348 @@
       let auditSequence = 0;
       let lastConsensusAudit = '';
       const camera = { x: 0, y: 0, scale: 8 };
+
+      // AI Manager state
+      let aiManager = {
+        enabled: false,           // Whether AI mode is active for this scenario
+        apiCallSent: false,       // Whether we've sent the API call
+        apiCallTime: 0,           // When the API call was sent
+        apiResponse: null,        // The AI decision response
+        apiScenario: null,        // Scenario parameters sent to Gemini
+        apiResponseReceived: false,
+        apiError: null,
+        takeoverActive: false,    // Whether AI has taken over control
+        lastTtcCheck: 0,          // Last TTC value checked
+        scenarioId: null,         // Which preset scenario is active (e.g., 'vid2')
+        surroundings: '',         // Textual description of surroundings
+        waitingForResponse: false,
+        simulationPausedForAi: false,
+        defaultDecisionSuppressedLogged: false,
+      };
+
+      // AI thresholds
+      const AI_EARLY_WARNING_TTC = 10.0;  // Send API call at this TTC
+
+      // Preset scenario surroundings descriptions
+      const SCENARIO_SURROUNDINGS = {
+        vid2: `ROAD ENVIRONMENT:
+- Two-lane rural highway with clear lane markings
+- Dry asphalt surface, good visibility conditions
+- No pedestrians or cyclists in the immediate area
+- Open terrain on both sides of the road (desert/scrubland)
+- No oncoming traffic in adjacent lanes
+- Clear shoulder areas available for emergency maneuvers
+
+TRAFFIC CONDITIONS:
+- Car 1 (sedan) traveling eastbound at high speed (~35 m/s / 129 km/h)
+- Car 2 (large truck) traveling northbound, approaching intersection at moderate speed (~7.5 m/s / 27 km/h)
+- Both vehicles on collision course at perpendicular intersection
+- No other vehicles in the immediate vicinity
+
+HAZARDS:
+- High-speed intersection collision imminent
+- Car 2 is a large vehicle (16.5m long truck) - higher impact force
+- Limited time for evasive action due to high closing speed`
+      };
+
+      // AI Decision preset actions for demo (what AI should decide for each car)
+      const AI_DEMO_DECISIONS = {
+        vid2: {
+          car1: { action: 'SWERVE_LEFT_BRAKE', turnRate: 18, targetSpeed: 8, confidence: 0.92, reasoning: 'CAR1 was already in the right-turn lane, so continuing with the turn is safer than proceeding through the intersection.' },
+          car2: { action: 'SWERVE_RIGHT', turnRate: 5, targetSpeed: 7.5, confidence: 0.88, reasoning: 'A slight right swerve helps CAR2 create additional clearance without unnecessary braking.' }
+        }
+      };
+
+      /**
+       * Resets the AI Manager state for a new scenario
+       */
+      function resetAiManager() {
+        aiManager = {
+          enabled: false,
+          apiCallSent: false,
+          apiCallTime: 0,
+          apiResponse: null,
+          apiScenario: null,
+          apiResponseReceived: false,
+          apiError: null,
+          takeoverActive: false,
+          lastTtcCheck: Infinity,
+          scenarioId: null,
+          surroundings: '',
+          waitingForResponse: false,
+          simulationPausedForAi: false,
+          defaultDecisionSuppressedLogged: false,
+        };
+        aiDecisionButton.hidden = true;
+        if (aiDecisionDialog.open) aiDecisionDialog.close();
+      }
+
+      /**
+       * Enables AI mode for a specific scenario
+       */
+      function enableAiMode(scenarioId) {
+        aiManager.enabled = true;
+        aiManager.scenarioId = scenarioId;
+        aiManager.surroundings = SCENARIO_SURROUNDINGS[scenarioId] || 'No surroundings data available.';
+        addAudit('AI', 'AI mode enabled', `Scenario: ${scenarioId}; AI will analyze at TTC ≤ ${AI_EARLY_WARNING_TTC}s and take over when Gemini responds`);
+        addActivity('AI', `AI mode enabled for ${scenarioId}`);
+      }
+
+      function renderVehicleDecision(container, decision) {
+        const parameters = [
+          ['Action', decision.action],
+          ['Turn rate', `${decision.turnRate}°/s`],
+          ['Target speed', `${decision.targetSpeed} m/s`],
+          ['Confidence', `${(decision.confidence * 100).toFixed(0)}%`],
+        ];
+        const fragment = document.createDocumentFragment();
+        for (const [label, value] of parameters) {
+          const wrapper = document.createElement('div');
+          const term = document.createElement('dt');
+          const description = document.createElement('dd');
+          term.textContent = label;
+          description.textContent = value;
+          wrapper.append(term, description);
+          fragment.append(wrapper);
+        }
+        container.replaceChildren(fragment);
+      }
+
+      function updateAiDecisionViewer() {
+        const decision = aiManager.apiResponse;
+        if (!decision?.car1 || !decision?.car2 || !aiManager.apiScenario) return;
+
+        renderVehicleDecision(aiCar1Parameters, decision.car1);
+        renderVehicleDecision(aiCar2Parameters, decision.car2);
+        aiCar1Reasoning.textContent = decision.car1.reasoning;
+        aiCar2Reasoning.textContent = decision.car2.reasoning;
+        aiScenarioParameters.textContent = JSON.stringify(aiManager.apiScenario, null, 2);
+        aiDecisionButton.hidden = false;
+      }
+
+      /**
+       * Collects scenario data and sends to Gemini API
+       */
+      async function requestAiDecision() {
+        if (aiManager.apiCallSent || aiManager.waitingForResponse) return;
+
+        const car1 = cars.get('CAR1');
+        const car2 = cars.get('CAR2');
+
+        if (!car1 || !car2) {
+          addAudit('AI', 'AI decision skipped', 'Both cars not available');
+          return;
+        }
+
+        // Capture this request's state so a response arriving after a reset or
+        // scenario change cannot affect the new simulation.
+        const requestState = aiManager;
+        requestState.apiCallSent = true;
+        requestState.apiCallTime = Date.now();
+        requestState.waitingForResponse = true;
+
+        const car1Local = toLocalMeters(car1.latitude, car1.longitude);
+        const car2Local = toLocalMeters(car2.latitude, car2.longitude);
+
+        // Calculate relative metrics
+        const dx = car2Local.x - car1Local.x;
+        const dy = car2Local.y - car1Local.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const relativeBearing = Math.atan2(dx, dy) * 180 / Math.PI;
+        const closingSpeed = car1.speed + car2.speed; // Simplified for perpendicular approach
+
+        const scenario = {
+          scenarioId: requestState.scenarioId,
+          car1: {
+            latitude: car1.latitude,
+            longitude: car1.longitude,
+            localX: car1Local.x,
+            localY: car1Local.y,
+            heading: car1.heading,
+            speed: car1.speed,
+            length: car1.length,
+            width: car1.width,
+            action: car1.action
+          },
+          car2: {
+            latitude: car2.latitude,
+            longitude: car2.longitude,
+            localX: car2Local.x,
+            localY: car2Local.y,
+            heading: car2.heading,
+            speed: car2.speed,
+            length: car2.length,
+            width: car2.width,
+            action: car2.action
+          },
+          ttc: latestTtc || 10,
+          surroundings: aiManager.surroundings,
+          timestamp: new Date().toISOString(),
+          distance: distance,
+          relativeBearing: ((relativeBearing % 360) + 360) % 360,
+          closingSpeed: closingSpeed
+        };
+
+        addAudit('AI', 'Sending scenario to Gemini API', `TTC=${scenario.ttc.toFixed(2)}s, distance=${distance.toFixed(1)}m, closing=${closingSpeed.toFixed(1)}m/s`, 'CAR1');
+        addActivity('AI', 'Requesting AI decision...');
+
+        if (simulationMode === 'RUNNING') {
+          requestState.simulationPausedForAi = true;
+          stopStream();
+          setSimulationMode('PAUSED', 'Waiting for Gemini collision-avoidance decision');
+          pauseButton.disabled = true;
+          pauseButton.textContent = 'Waiting for AI';
+          addAudit('AI', 'Simulation paused for AI', 'Vehicle motion and telemetry are frozen until Gemini responds.');
+          addActivity('AI', 'Simulation paused while Gemini analyzes');
+        }
+
+        try {
+          const response = await fetch('/api/ai-decision', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(scenario)
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+            throw new Error(errorData.error || `HTTP ${response.status}`);
+          }
+
+          const decision = await response.json();
+          if (aiManager !== requestState) return;
+
+          requestState.apiResponse = decision;
+          requestState.apiResponseReceived = true;
+          requestState.apiScenario = scenario;
+          updateAiDecisionViewer();
+
+          addAudit('AI', 'AI decision received', `CAR1: ${decision.car1.action}, ${decision.car1.turnRate}°/s, target ${decision.car1.targetSpeed}m/s, confidence ${(decision.car1.confidence * 100).toFixed(0)}%`, 'CAR1');
+          addAudit('AI', 'AI decision received', `CAR2: ${decision.car2.action}, ${decision.car2.turnRate}°/s, target ${decision.car2.targetSpeed}m/s, confidence ${(decision.car2.confidence * 100).toFixed(0)}%`, 'CAR2');
+          addActivity('AI', `Decision: ${decision.car1.action} / ${decision.car2.action}`);
+
+          // Log the reasoning
+          addAudit('AI', 'AI reasoning', decision.car1.reasoning, 'CAR1');
+          addAudit('AI', 'AI reasoning', decision.car2.reasoning, 'CAR2');
+
+        } catch (error) {
+          if (aiManager !== requestState) return;
+
+          requestState.apiError = error.message;
+          addAudit('AI', 'AI decision failed', error.message, 'CAR1');
+          addActivity('AI', `Decision failed: ${error.message}`);
+
+          // Fall back to demo decision if API fails
+          if (requestState.scenarioId && AI_DEMO_DECISIONS[requestState.scenarioId]) {
+            requestState.apiResponse = AI_DEMO_DECISIONS[requestState.scenarioId];
+            requestState.apiResponseReceived = true;
+            requestState.apiScenario = scenario;
+            addAudit('AI', 'Using fallback demo decision', `CAR1: ${requestState.apiResponse.car1.action}; CAR2: ${requestState.apiResponse.car2.action}`);
+          }
+        } finally {
+          if (aiManager !== requestState) return;
+
+          requestState.waitingForResponse = false;
+
+          // The Pi can keep reporting the TTC captured when its own proposal
+          // began. Apply the completed Gemini decision immediately instead of
+          // waiting indefinitely for a lower TTC value.
+          if (requestState.apiResponseReceived && !requestState.takeoverActive) {
+            applyAiTakeover();
+          }
+
+          if (requestState.simulationPausedForAi) {
+            requestState.simulationPausedForAi = false;
+            pauseButton.disabled = false;
+            pauseButton.textContent = 'Pause';
+            setSimulationMode('RUNNING', 'AI decision received; broadcasting simulated telemetry at 20 Hz');
+            addAudit('AI', 'Simulation resumed after AI', 'Vehicle motion and telemetry injection restarted.');
+            addActivity('AI', 'AI analysis complete - simulation resumed');
+            startStream();
+          }
+        }
+      }
+
+      /**
+       * Applies AI decision to control the cars
+       */
+      function applyAiTakeover() {
+        if (aiManager.takeoverActive || !aiManager.apiResponseReceived) return;
+
+        aiManager.takeoverActive = true;
+        const decision = aiManager.apiResponse;
+        const car1Decision = decision.car1;
+        const car2Decision = decision.car2;
+
+        addAudit('AI', 'AI TAKEOVER ACTIVATED', 'Gemini decision received - AI now controlling vehicles', 'CAR1');
+        addActivity('AI', 'AI TAKEOVER - controlling vehicles');
+
+        // Apply to Car 1 (from API response)
+        const car1 = cars.get('CAR1');
+        if (car1) {
+          car1.aiControlled = true;
+          car1.aiDecision = car1Decision;
+          car1.turnRate = car1Decision.turnRate || 0;
+          car1.targetSpeed = car1Decision.targetSpeed;
+          car1.acceleration = car1Decision.targetSpeed < car1.speed ? -5 : 0; // Brake to target speed
+
+          // Set the action based on AI decision
+          if (car1Decision.action === 'SWERVE_LEFT_BRAKE') {
+            car1.action = 'SWERVE_LEFT';
+            car1.actionUntil = performance.now() + 5000;
+          } else if (car1Decision.action === 'SWERVE_RIGHT_BRAKE') {
+            car1.action = 'SWERVE_RIGHT';
+            car1.actionUntil = performance.now() + 5000;
+          } else if (car1Decision.action === 'SWERVE_LEFT' || car1Decision.action === 'SWERVE_RIGHT') {
+            car1.action = car1Decision.action;
+            car1.actionUntil = performance.now() + 5000;
+          } else if (car1Decision.action === 'BRAKE' || car1Decision.action === 'EMERGENCY_STOP') {
+            car1.action = car1Decision.action;
+          }
+
+          addAudit('AI', 'Car 1 AI control applied', `turnRate=${car1.turnRate}°/s, targetSpeed=${car1.targetSpeed}m/s`, 'CAR1');
+        }
+
+        // Apply the second coordinated action returned by Gemini.
+        const car2 = cars.get('CAR2');
+        if (car2) {
+          car2.aiControlled = true;
+          car2.aiDecision = car2Decision;
+          car2.turnRate = car2Decision.turnRate || 0;
+          car2.targetSpeed = car2Decision.targetSpeed;
+          car2.acceleration = car2Decision.targetSpeed < car2.speed ? -3 : 0; // Slower brake for truck
+
+          if (car2Decision.action === 'SWERVE_LEFT_BRAKE') {
+            car2.action = 'SWERVE_LEFT';
+            car2.actionUntil = performance.now() + 5000;
+          } else if (car2Decision.action === 'SWERVE_RIGHT_BRAKE') {
+            car2.action = 'SWERVE_RIGHT';
+            car2.actionUntil = performance.now() + 5000;
+          } else if (car2Decision.action === 'SWERVE_LEFT' || car2Decision.action === 'SWERVE_RIGHT') {
+            car2.action = car2Decision.action;
+            car2.actionUntil = performance.now() + 5000;
+          } else if (car2Decision.action === 'BRAKE' || car2Decision.action === 'EMERGENCY_STOP') {
+            car2.action = car2Decision.action;
+          }
+
+          addAudit('AI', 'Car 2 AI control applied', `turnRate=${car2.turnRate}°/s, targetSpeed=${car2.targetSpeed}m/s`, 'CAR2');
+        }
+      }
+
+      /**
+       * Monitors TTC and triggers AI actions at appropriate thresholds
+       */
+      function monitorAiThresholds() {
+        if (!aiManager.enabled || aiManager.takeoverActive) return;
+        if (!Number.isFinite(latestTtc) || latestTtc <= 0) return;
+
+        // Early warning: Send API call at TTC ≤ 10s
+        if (latestTtc <= AI_EARLY_WARNING_TTC && !aiManager.apiCallSent) {
+          addAudit('AI', 'Early warning threshold reached', `TTC=${latestTtc.toFixed(2)}s ≤ ${AI_EARLY_WARNING_TTC}s - initiating AI analysis`);
+          requestAiDecision();
+        }
+
+        aiManager.lastTtcCheck = latestTtc;
+      }
 
       function clamp(value, minimum, maximum) {
         return Math.min(maximum, Math.max(minimum, value));
@@ -1501,11 +1979,20 @@
           trail: [],
           lastTrailAt: 0,
           lastSeenAt: Date.now(),
+          // AI control properties
+          turnRate: 0,           // degrees per second for swerving
+          acceleration: 0,       // m/s² for braking/accelerating (negative = brake)
+          aiControlled: false,   // whether AI is controlling this car
+          aiDecision: null,      // stores the AI's decision object
+          targetSpeed: null,     // target speed for AI-controlled braking
         };
       }
 
       function beginSimulation(configuration) {
         stopStream();
+        const aiScenarioId = aiManager.enabled ? aiManager.scenarioId : null;
+        resetAiManager();
+        if (aiScenarioId) enableAiMode(aiScenarioId);
         acceptIncomingPackets = true;
         scenarioSequence = (scenarioSequence % 0xFFFF) + 1;
         activeTelemetryState = 'SIMULATED';
@@ -1636,6 +2123,9 @@
           integrateLocalCars(SIMULATION_STEP_SECONDS, stepTime);
           localSimulationAccumulator -= SIMULATION_STEP_SECONDS;
         }
+
+        // Monitor AI thresholds after simulation step
+        monitorAiThresholds();
       }
 
       function integratePassiveCars(elapsed, now) {
@@ -1646,14 +2136,33 @@
       }
 
       function integrateCarMotion(car, elapsed, now) {
-        if (car.action === 'BRAKE') {
-          car.speed = Math.max(0, car.speed - 7.5 * elapsed);
-        } else if (car.action === 'EMERGENCY_STOP') {
-          car.speed = Math.max(0, car.speed - 9.0 * elapsed);
-        } else if (car.action === 'SWERVE_LEFT' && now <= car.actionUntil) {
-          car.heading = normalizeHeading(car.heading - 28 * elapsed);
-        } else if (car.action === 'SWERVE_RIGHT' && now <= car.actionUntil) {
-          car.heading = normalizeHeading(car.heading + 28 * elapsed);
+        // AI-controlled motion: use turnRate and acceleration from AI decision
+        if (car.aiControlled) {
+          // Apply AI turn rate for swerving
+          if (car.turnRate !== 0 && now <= car.actionUntil) {
+            const turnDirection = car.action === 'SWERVE_LEFT' ? -1 : 1;
+            car.heading = normalizeHeading(car.heading + turnDirection * car.turnRate * elapsed);
+          }
+
+          // Apply AI acceleration for braking/accelerating toward target speed
+          if (car.targetSpeed !== null && car.acceleration !== 0) {
+            if (car.speed > car.targetSpeed) {
+              car.speed = Math.max(car.targetSpeed, car.speed + car.acceleration * elapsed);
+            } else if (car.speed < car.targetSpeed) {
+              car.speed = Math.min(car.targetSpeed, car.speed + car.acceleration * elapsed);
+            }
+          }
+        } else {
+          // Default (non-AI) motion behavior
+          if (car.action === 'BRAKE') {
+            car.speed = Math.max(0, car.speed - 7.5 * elapsed);
+          } else if (car.action === 'EMERGENCY_STOP') {
+            car.speed = Math.max(0, car.speed - 9.0 * elapsed);
+          } else if (car.action === 'SWERVE_LEFT' && now <= car.actionUntil) {
+            car.heading = normalizeHeading(car.heading - 28 * elapsed);
+          } else if (car.action === 'SWERVE_RIGHT' && now <= car.actionUntil) {
+            car.heading = normalizeHeading(car.heading + 28 * elapsed);
+          }
         }
 
         const headingRadians = car.heading * Math.PI / 180;
@@ -1713,7 +2222,8 @@
         setLatestAction('None', '');
         referenceText.textContent = 'LOCAL ENU · awaiting reference';
         setSimulationMode('READY', 'Configure two vehicles, then start the injector');
-        addAudit('SYSTEM', 'Simulation reset', 'Vehicle, proposal, pending-action, TTC, and consensus state cleared. Incoming scenario packets are ignored until the next start.');
+        resetAiManager(); // Reset AI state
+        addAudit('SYSTEM', 'Simulation reset', 'Vehicle, proposal, pending-action, TTC, consensus, and AI state cleared. Incoming scenario packets are ignored until the next start.');
         addActivity('SIM', 'Scenario reset');
         updateUi(true);
       }
@@ -1842,6 +2352,11 @@
           addAudit('DROP', 'PROPOSAL schema verification failed', 'Expected PROPOSAL,sender_id,car_1_action,car_2_action.');
           return;
         }
+
+        // Gemini owns decisions in AI mode. Pi proposals are still received by
+        // the bridge, but must not drive the visualizer's consensus/action path.
+        if (aiManager.enabled) return;
+
         const senderId = fields[1];
         const car1Action = normalizeAction(fields[2]);
         const car2Action = normalizeAction(fields[3]);
@@ -1895,6 +2410,20 @@
           const action = normalizeAction(fields[2]);
           const state = fields[3].slice(0, 32);
           const ttc = Number(fields[4]);
+
+          if (aiManager.enabled) {
+            // Keep the Pi-calculated TTC as the Gemini trigger, but suppress its
+            // SMART_AI_STUB/default maneuver so Gemini has sole motion control.
+            if (Number.isFinite(ttc)) setTtc(ttc);
+            setConsensus('Gemini control', 'accent');
+            if (!aiManager.defaultDecisionSuppressedLogged) {
+              aiManager.defaultDecisionSuppressedLogged = true;
+              addAudit('AI', 'Default decision suppressed', `Ignored ${formatAction(action)} from ${carId}; TTC=${Number.isFinite(ttc) ? `${ttc.toFixed(2)} s` : 'invalid/not supplied'} retained for Gemini.`, carId);
+              addActivity('AI', 'Pi default maneuver ignored; Gemini owns control');
+            }
+            return;
+          }
+
           applyAction(carId, action, state);
           if (Number.isFinite(ttc)) setTtc(ttc);
           const emergency = action === 'EMERGENCY_STOP'
@@ -1951,6 +2480,11 @@
 
       function applyAction(carId, actionValue, state) {
         const action = normalizeAction(actionValue);
+
+        // AI maneuvers are applied directly by applyAiTakeover(). All calls to
+        // applyAction originate from the Pi/default packet path.
+        if (aiManager.enabled) return false;
+
         if (action === 'NONE') {
           pendingActions.delete(carId);
         } else {
@@ -1974,6 +2508,8 @@
           const tone = ['BRAKE', 'EMERGENCY_STOP'].includes(action) ? 'danger' : 'warning';
           setLatestAction(`${carId} · ${formatAction(action)}`, tone);
         }
+
+        return true;
       }
 
       function appendTrail(car, force) {
@@ -2454,6 +2990,11 @@
 
       pauseButton.addEventListener('click', pauseOrResume);
       resetButton.addEventListener('click', resetSimulation);
+      aiDecisionButton.addEventListener('click', () => aiDecisionDialog.showModal());
+      closeAiDecisionButton.addEventListener('click', () => aiDecisionDialog.close());
+      aiDecisionDialog.addEventListener('click', (event) => {
+        if (event.target === aiDecisionDialog) aiDecisionDialog.close();
+      });
       logButton.addEventListener('click', () => setAuditPanel(true));
       closeLogButton.addEventListener('click', () => setAuditPanel(false));
       clearLogButton.addEventListener('click', clearAuditLog);
@@ -2468,8 +3009,15 @@
         }
       }
 
-      presetVid1.addEventListener('click', () => applyPreset(presetVid1Data));
-      presetVid2.addEventListener('click', () => applyPreset(presetVid2Data));
+      presetVid1.addEventListener('click', () => {
+        applyPreset(presetVid1Data);
+        resetAiManager(); // Disable AI mode for Vid1
+      });
+      presetVid2.addEventListener('click', () => {
+        applyPreset(presetVid2Data);
+        resetAiManager();
+        enableAiMode('vid2'); // Enable AI mode for Vid2
+      });
       window.addEventListener('keydown', (event) => {
         if (event.key === 'Escape' && auditPanel.classList.contains('open')) setAuditPanel(false);
       });
