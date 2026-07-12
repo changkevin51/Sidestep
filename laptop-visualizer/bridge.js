@@ -1,6 +1,7 @@
 'use strict';
 
 const dgram = require('dgram');
+const crypto = require('crypto');
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
@@ -11,8 +12,11 @@ const UDP_PORT = Number.parseInt(process.env.V2V_UDP_PORT || '12345', 10);
 const WS_PORT = Number.parseInt(process.env.V2V_WS_PORT || '8080', 10);
 const HTTP_PORT = Number.parseInt(process.env.V2V_HTTP_PORT || '8000', 10);
 const BROADCAST_ADDRESS = process.env.V2V_BROADCAST_ADDRESS || '192.168.137.255';
+const HTTP_BIND_ADDRESS = process.env.V2V_HTTP_BIND_ADDRESS || '0.0.0.0';
+const ALERT_TOKEN = process.env.V2V_ALERT_TOKEN || '';
 const MAX_PACKET_BYTES = 4096;
 const MAX_WEBSOCKET_BACKLOG_BYTES = 64 * 1024;
+const MAX_ALERT_AUDIO_BYTES = 1024 * 1024;
 
 function validPort(value) {
   return Number.isInteger(value) && value > 0 && value <= 65535;
@@ -24,6 +28,33 @@ if (![UDP_PORT, WS_PORT, HTTP_PORT].every(validPort)) {
 
 function isLoopback(address) {
   return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
+}
+
+function tokenMatches(candidate) {
+  if (!ALERT_TOKEN || typeof candidate !== 'string') return false;
+  const expected = Buffer.from(ALERT_TOKEN, 'utf8');
+  const actual = Buffer.from(candidate, 'utf8');
+  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+}
+
+function parseRequestUrl(request) {
+  try {
+    return new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
+  } catch (_) {
+    return null;
+  }
+}
+
+function originMatchesRequestHost(info) {
+  try {
+    const origin = new URL(info.origin);
+    const requestHost = new URL(`http://${info.req.headers.host || 'localhost'}`);
+    return origin.protocol === 'http:'
+      && Number(origin.port || '80') === HTTP_PORT
+      && origin.hostname === requestHost.hostname;
+  } catch (_) {
+    return false;
+  }
 }
 
 function validBrowserPacket(rawMessage) {
@@ -56,19 +87,23 @@ function validBrowserPacket(rawMessage) {
     && numbers[5] > 0 && numbers[5] <= 30;
 }
 
-const allowedOrigins = new Set([
-  `http://localhost:${HTTP_PORT}`,
-  `http://127.0.0.1:${HTTP_PORT}`,
-  `http://[::1]:${HTTP_PORT}`,
-  `http://192.168.137.192:${HTTP_PORT}`, // <-- ADD THIS LINE
-]);
 const udpReceiver = dgram.createSocket({ type: 'udp4', reuseAddr: true });
 const udpSender = dgram.createSocket('udp4');
 const webSockets = new WebSocketServer({
   port: WS_PORT,
   maxPayload: MAX_PACKET_BYTES,
-  verifyClient: (info) => isLoopback(info.req.socket.remoteAddress)
-    && (!info.origin || allowedOrigins.has(info.origin)),
+  verifyClient: (info) => {
+    const parsed = parseRequestUrl(info.req);
+    if (!parsed) return false;
+    if (parsed.pathname === '/alerts') {
+      return /^(CAR1|CAR2)$/.test(parsed.searchParams.get('car') || '')
+        && tokenMatches(parsed.searchParams.get('token'))
+        && originMatchesRequestHost(info);
+    }
+    return parsed.pathname === '/'
+      && isLoopback(info.req.socket.remoteAddress)
+      && (!info.origin || originMatchesRequestHost(info));
+  },
 });
 
 let udpSenderReady = false;
@@ -102,6 +137,7 @@ udpReceiver.on('message', (packet, remoteInfo) => {
   const rawMessage = packet.toString('utf8');
   for (const client of webSockets.clients) {
     if (client.readyState === WebSocket.OPEN
+        && !client.alertCarId
         && client.bufferedAmount <= MAX_WEBSOCKET_BACKLOG_BYTES) {
       client.send(rawMessage);
     }
@@ -137,13 +173,17 @@ webSockets.on('listening', () => {
 
 webSockets.on('connection', (socket, request) => {
   const peer = request.socket.remoteAddress || 'unknown client';
-  log(`visualizer connected (${peer})`);
+  const parsed = parseRequestUrl(request);
+  socket.alertCarId = parsed && parsed.pathname === '/alerts'
+    ? parsed.searchParams.get('car')
+    : null;
+  log(`${socket.alertCarId ? `${socket.alertCarId} phone` : 'visualizer'} connected (${peer})`);
 
   // WebSocket packets travel in one direction only: browser -> UDP. The UDP
   // receiver may naturally observe the host's own broadcast once, but neither
   // side rebroadcasts a received packet, so it cannot form a loop.
   socket.on('message', (data, isBinary) => {
-    if (isBinary) {
+    if (isBinary || socket.alertCarId) {
       return;
     }
 
@@ -163,7 +203,7 @@ webSockets.on('connection', (socket, request) => {
   });
 
   socket.on('close', () => {
-    log(`visualizer disconnected (${peer})`);
+    log(`${socket.alertCarId ? `${socket.alertCarId} phone` : 'visualizer'} disconnected (${peer})`);
   });
 });
 
@@ -174,6 +214,7 @@ webSockets.on('error', (err) => {
 // A tiny static server keeps setup to one command and avoids browser file://
 // restrictions. It deliberately serves only the visualizer page.
 const visualizerPath = path.join(__dirname, 'simulation.html');
+const driverAlertPath = path.join(__dirname, 'driver-alert.html');
 
 // Helper to parse JSON body from request
 function parseJsonBody(req) {
@@ -189,6 +230,38 @@ function parseJsonBody(req) {
     });
     req.on('error', reject);
   });
+}
+
+function readBinaryBody(req, maximumBytes) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let total = 0;
+    req.on('data', (chunk) => {
+      total += chunk.length;
+      if (total > maximumBytes) {
+        const error = new Error('Audio payload is too large');
+        error.statusCode = 413;
+        reject(error);
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks, total)));
+    req.on('error', reject);
+  });
+}
+
+function alertClientsFor(carId) {
+  return Array.from(webSockets.clients).filter((client) => (
+    client.readyState === WebSocket.OPEN
+    && client.alertCarId === carId
+    && client.bufferedAmount <= MAX_WEBSOCKET_BACKLOG_BYTES
+  ));
+}
+
+function validAlertAction(value) {
+  return ['BRAKE', 'SWERVE_LEFT', 'SWERVE_RIGHT', 'EMERGENCY_STOP'].includes(value);
 }
 
 const httpServer = http.createServer(async (request, response) => {
@@ -208,6 +281,98 @@ const httpServer = http.createServer(async (request, response) => {
   if (requestPath === '/favicon.ico') {
     response.writeHead(204);
     response.end();
+    return;
+  }
+
+  const alertUploadMatch = requestPath.match(/^\/api\/driver-alert\/(CAR1|CAR2)$/);
+  if (alertUploadMatch && request.method === 'POST') {
+    if (!tokenMatches(request.headers['x-v2v-alert-token'])) {
+      response.writeHead(401, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ error: 'Invalid alert token' }));
+      return;
+    }
+    if ((request.headers['content-type'] || '').split(';')[0].trim() !== 'audio/mpeg') {
+      response.writeHead(415, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ error: 'Expected audio/mpeg (MP3)' }));
+      return;
+    }
+    const declaredLength = Number(request.headers['content-length'] || 0);
+    if (!Number.isFinite(declaredLength) || declaredLength <= 0
+        || declaredLength > MAX_ALERT_AUDIO_BYTES) {
+      response.writeHead(413, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ error: 'Invalid audio payload length' }));
+      return;
+    }
+
+    try {
+      const carId = alertUploadMatch[1];
+      const action = request.headers['x-v2v-action'];
+      const ttc = Number(request.headers['x-v2v-ttc']);
+      const text = request.headers['x-v2v-alert-text'];
+      if (!validAlertAction(action) || !Number.isFinite(ttc) || ttc < 0 || ttc > 10
+          || typeof text !== 'string' || text.length === 0 || text.length > 300) {
+        response.writeHead(400, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ error: 'Invalid alert metadata' }));
+        return;
+      }
+      const audio = await readBinaryBody(request, MAX_ALERT_AUDIO_BYTES);
+      if (audio.length !== declaredLength) {
+        response.writeHead(400, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ error: 'Incomplete audio payload' }));
+        return;
+      }
+
+      const clients = alertClientsFor(carId);
+      const metadata = JSON.stringify({ type: 'alert', carId, action, ttc, text });
+      for (const client of clients) {
+        client.send(metadata);
+        client.send(audio, { binary: true });
+      }
+      log(`${carId} ${action} voice alert forwarded to ${clients.length} phone(s)`);
+      response.writeHead(202, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ accepted: true, recipients: clients.length }));
+    } catch (err) {
+      if (!response.headersSent && !response.destroyed) {
+        response.writeHead(err.statusCode || 500, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ error: err.message }));
+      }
+    }
+    return;
+  }
+
+  const driverPageMatch = requestPath.match(/^\/driver\/(CAR1|CAR2)$/);
+  if (driverPageMatch && request.method === 'GET') {
+    if (!tokenMatches(new URL(request.url, `http://${request.headers.host}`).searchParams.get('token'))) {
+      response.writeHead(401, { 'Content-Type': 'text/plain; charset=utf-8' });
+      response.end('Invalid or missing alert token.');
+      return;
+    }
+    fs.readFile(driverAlertPath, (err, page) => {
+      if (err) {
+        error('could not read driver-alert.html', err);
+        response.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+        response.end('Driver alert page unavailable');
+        return;
+      }
+      response.writeHead(200, {
+        'Cache-Control': 'no-store',
+        'Content-Security-Policy': "default-src 'self'; connect-src ws: wss:; style-src 'unsafe-inline'; script-src 'unsafe-inline'",
+        'Content-Type': 'text/html; charset=utf-8',
+        'Referrer-Policy': 'no-referrer',
+        'X-Content-Type-Options': 'nosniff',
+      });
+      response.end(page);
+    });
+    return;
+  }
+
+  // Binding HTTP to the hotspot is required for phone audio, but the existing
+  // Gemini endpoints remain laptop-only so another hotspot client cannot spend
+  // the configured API quota.
+  if (requestPath.startsWith('/api/ai-')
+      && !isLoopback(request.socket.remoteAddress)) {
+    response.writeHead(403, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ error: 'AI endpoints are laptop-only' }));
     return;
   }
 
@@ -281,8 +446,11 @@ httpServer.on('error', (err) => {
   error('HTTP server error', err);
 });
 
-httpServer.listen(HTTP_PORT, '127.0.0.1', () => {
-  log(`visualizer available at http://localhost:${HTTP_PORT}`);
+httpServer.listen(HTTP_PORT, HTTP_BIND_ADDRESS, () => {
+  log(`HTTP pages and alert upload listening on ${HTTP_BIND_ADDRESS}:${HTTP_PORT}`);
+  if (!ALERT_TOKEN) {
+    log('phone alerts disabled: set V2V_ALERT_TOKEN before starting the bridge');
+  }
 });
 
 function shutdown(signal) {

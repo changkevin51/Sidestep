@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <title>V2V driver alerts</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, -apple-system, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px;
+      background: radial-gradient(circle at top, #173354, #07111f 55%); color: #f3f7fb; }
+    main { width: min(100%, 460px); padding: 28px; border: 1px solid #31506d; border-radius: 24px;
+      background: rgba(8, 20, 34, .9); box-shadow: 0 24px 70px #0008; text-align: center; }
+    .eyebrow { color: #82b8e8; font-size: .78rem; letter-spacing: .16em; text-transform: uppercase; }
+    h1 { margin: 10px 0 4px; font-size: clamp(2rem, 10vw, 3.5rem); }
+    #status { margin: 20px 0; min-height: 1.5em; color: #b9c9d8; }
+    button { width: 100%; border: 0; border-radius: 14px; padding: 16px; font: inherit; font-weight: 750;
+      background: #3da7ff; color: #04111d; cursor: pointer; }
+    button:disabled { opacity: .55; }
+    .event { margin-top: 24px; padding: 18px; min-height: 112px; border-radius: 16px; background: #0e2237;
+      text-align: left; }
+    .event strong { display: block; color: #ffca68; margin-bottom: 8px; }
+    .event p { margin: 0; line-height: 1.45; }
+    .hint { margin: 18px 0 0; color: #8499ad; font-size: .85rem; line-height: 1.45; }
+    .ready { color: #71dfad !important; }
+    .warning { color: #ffca68 !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">Collision prevention audio</div>
+    <h1 id="carId">CAR?</h1>
+    <div id="status">Preparing…</div>
+    <button id="enable" type="button">Enable speaker and connect</button>
+    <section class="event" aria-live="assertive">
+      <strong>Last alert</strong>
+      <p id="lastAlert">No alerts received.</p>
+    </section>
+    <p class="hint">Keep this tab open, turn up media volume, and disable silent/focus modes for the demo.</p>
+  </main>
+  <script>
+    (() => {
+      'use strict';
+      const carId = location.pathname.split('/').filter(Boolean).pop();
+      const token = new URLSearchParams(location.search).get('token') || '';
+      const status = document.getElementById('status');
+      const enable = document.getElementById('enable');
+      const lastAlert = document.getElementById('lastAlert');
+      document.getElementById('carId').textContent = /^(CAR1|CAR2)$/.test(carId) ? carId : 'INVALID';
+
+      let socket;
+      let audioContext;
+      let reconnectTimer;
+      let enabled = false;
+      let playing = false;
+      const queue = [];
+      let pendingMetadata = null;
+
+      function setStatus(message, className = '') {
+        status.textContent = message;
+        status.className = className;
+      }
+
+      async function playQueued() {
+        if (playing || !audioContext || !queue.length) return;
+        playing = true;
+        const item = queue.shift();
+        try {
+          const decoded = await audioContext.decodeAudioData(item.audio.slice(0));
+          const source = audioContext.createBufferSource();
+          source.buffer = decoded;
+          source.connect(audioContext.destination);
+          source.addEventListener('ended', () => {
+            playing = false;
+            playQueued();
+          }, { once: true });
+          source.start();
+          lastAlert.textContent = item.metadata.text;
+          setStatus(`${item.metadata.action.replaceAll('_', ' ')} · TTC ${item.metadata.ttc.toFixed(2)} s`, 'warning');
+        } catch (_) {
+          playing = false;
+          setStatus('Could not decode the MP3 alert.');
+          playQueued();
+        }
+      }
+
+      function connect() {
+        if (!enabled || socket && socket.readyState < WebSocket.CLOSING) return;
+        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const port = new URLSearchParams(location.search).get('wsPort') || '8080';
+        socket = new WebSocket(`${protocol}//${location.hostname}:${port}/alerts?car=${encodeURIComponent(carId)}&token=${encodeURIComponent(token)}`);
+        socket.binaryType = 'arraybuffer';
+        socket.addEventListener('open', () => setStatus('Connected — listening for alerts', 'ready'));
+        socket.addEventListener('message', (event) => {
+          if (typeof event.data === 'string') {
+            try { pendingMetadata = JSON.parse(event.data); } catch (_) { pendingMetadata = null; }
+            return;
+          }
+          if (pendingMetadata && pendingMetadata.type === 'alert') {
+            queue.push({ metadata: pendingMetadata, audio: event.data });
+            pendingMetadata = null;
+            playQueued();
+          }
+        });
+        socket.addEventListener('close', () => {
+          setStatus('Disconnected — retrying…');
+          clearTimeout(reconnectTimer);
+          reconnectTimer = setTimeout(connect, 1500);
+        });
+        socket.addEventListener('error', () => socket.close());
+      }
+
+      enable.addEventListener('click', async () => {
+        if (!token || !/^(CAR1|CAR2)$/.test(carId)) {
+          setStatus('This phone link is invalid.');
+          return;
+        }
+        audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
+        await audioContext.resume();
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        gain.gain.setValueAtTime(0.035, audioContext.currentTime);
+        oscillator.connect(gain).connect(audioContext.destination);
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.09);
+        enabled = true;
+        enable.disabled = true;
+        enable.textContent = 'Speaker enabled';
+        connect();
+      });
+
+      if (!token) setStatus('Missing alert token in this phone URL.');
+    })();
+  </script>
+</body>
+</html>

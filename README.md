@@ -18,10 +18,11 @@ consensus, timeout handling, and execution state on the Pis.
 
 ## Network preparation
 
-Connect all three devices to the same Wi-Fi subnet. The access point must allow
-client-to-client traffic and UDP broadcast; disable wireless/AP isolation. Allow
-UDP `12345` in each host firewall. The laptop also needs local TCP `8000` and
-WebSocket TCP `8080`.
+Connect the laptop, both Pis, and both phones to the same Wi-Fi subnet. The
+access point must allow client-to-client traffic and UDP broadcast; disable
+wireless/AP isolation. Allow UDP `12345` in each host firewall. The laptop also
+needs inbound TCP `8000` and WebSocket TCP `8080` from the hotspot subnet. Each
+Pi needs DNS and outbound HTTPS `443` access to ElevenLabs.
 
 The default destination is `255.255.255.255`. If the Wi-Fi adapter or router
 drops limited broadcasts, set `V2V_BROADCAST_ADDRESS` on the laptop to the
@@ -41,18 +42,9 @@ make CXX=q++ QNX_VARIANT=gcc_ntoaarch64le
 The same source can be smoke-tested on Linux with `make CXX=g++`. Run `make
 clean` when switching host/target toolchains because they share object names.
 QNX builds automatically select the Pi 5 AArch64 target, define QNX/POSIX
-features, and link `libsocket` when `QNX_TARGET` is set.
-
-The initial QNX SDP 8.0 image does not bundle an audio framework. For the alert
-hook, either deploy an executable `/home/qnx/bin/v2v_alert` that accepts
-`brake`, `swerve`, or `emergency_stop` (a GPIO buzzer/LED is sufficient), or
-port/install an `aplay`-compatible player and place warning files at:
-
-```text
-/home/qnx/assets/brake_warning.wav
-/home/qnx/assets/swerve_warning.wav
-/home/qnx/assets/emergency_warning.wav
-```
+features, and link `libsocket` and `libcurl` when `QNX_TARGET` is set. Install
+the QNX SDP curl package and configure the ElevenLabs/phone bridge environment
+before building; see [Driver audio setup](AUDIO_SETUP.md) for exact steps.
 
 Then start one identity on each Pi:
 
@@ -64,7 +56,7 @@ Then start one identity on each Pi:
 ./v2v_brain --id CAR2 --peer CAR1
 ```
 
-Use `--no-audio` for a bench test without either alert backend. IDs are
+Use `--no-audio` for a bench test without cloud/phone alerts. IDs are
 case-sensitive and must match the simulator's `CAR1` and `CAR2` labels.
 
 ## 2. Start the laptop bridge and visualizer
@@ -76,6 +68,11 @@ cd laptop-visualizer
 npm install
 npm start
 ```
+
+Set `V2V_ALERT_TOKEN` before `npm start` when using the phone speakers. Open the
+CAR1 page on phone 1 and the CAR2 page on phone 2, then tap **Enable speaker and
+connect** on both. The complete commands and URLs are in
+[Driver audio setup](AUDIO_SETUP.md).
 
 Open <http://localhost:8000>, configure both cars, and select **Start
 simulation**. The default crossing scenario exercises the under-three-second
@@ -106,7 +103,8 @@ UDP packet loss.
 ## Decision behavior
 
 - TTC is found with a 10-second, 50 ms OBB/SAT sweep in a local east/north
-  coordinate frame.
+  coordinate frame. A safety proposal begins when a predicted impact enters the
+  4.0-second driver-alert window.
 - Every Start/Restart uses a new scenario tag. Each Pi clears its prior
   proposal, execution action, and cached car pair before evaluating that tag.
 - At TTC below 3 seconds, both cars brake only when both stopping-distance
@@ -114,9 +112,11 @@ UDP packet loss.
 - At TTC of 3 seconds or more, `evaluateSmartDecision(Car, Car)` is the explicit
   onboard-model integration point. The PoC stub reports the smart path and
   returns conservative braking for both cars.
-- Matching proposals trigger the local execution state and action-specific
-  warning audio. The browser applies that same execution packet to its simulated
-  motion.
+- Matching proposals trigger the local execution state. A background libcurl
+  worker on that Pi asks ElevenLabs for one `mp3_44100_128` (`audio/mpeg`) clip
+  containing both the collision warning and committed maneuver, then sends it
+  to only that car's phone. The spoken TTC subtracts a conservative one-second
+  delivery allowance. The browser applies the same execution packet to motion.
 
 This is a demonstration, not a production automotive safety controller. It has
 no authenticated transport, clock synchronization, redundant sensing, vehicle

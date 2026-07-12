@@ -1,5 +1,5 @@
 TARGET := v2v_brain
-SOURCES := main_p2p.cpp car_collision.cpp udp_network.cpp
+SOURCES := main_p2p.cpp car_collision.cpp udp_network.cpp driver_alert.cpp
 OBJECTS := $(SOURCES:.cpp=.o)
 DEPS := $(OBJECTS:.o=.d)
 
@@ -7,7 +7,7 @@ CXX ?= c++
 CPPFLAGS ?=
 CXXFLAGS ?= -O2
 LDFLAGS ?=
-LDLIBS += -lm
+LDLIBS += -lm -lcurl
 
 # A configured QNX SDP exports QNX_TARGET. Select the Raspberry Pi 5's AArch64
 # target explicitly: the q++ default is an x86_64 QNX target.

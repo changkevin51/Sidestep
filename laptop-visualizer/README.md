@@ -5,6 +5,8 @@ This folder contains the laptop half of the V2V demo:
 - `bridge.js` forwards UDP datagrams from port `12345` to WebSocket clients on port `8080` without changing the CSV text.
 - Browser messages take the reverse path once, from WebSocket to a UDP broadcast. This is used only by the telemetry injector.
 - `simulation.html` configures two simulated cars, emits their telemetry at 20 Hz, and passively visualizes all V2V packets heard by the bridge.
+- `driver-alert.html` is the phone speaker client. An authenticated CAR1/CAR2
+  socket receives only that Pi's ElevenLabs MP3 alert.
 
 ## Run
 
@@ -22,7 +24,11 @@ WebSocket port `8080`. When using a custom WebSocket port, open (for example)
 Reset stops the telemetry scheduler, clears both vehicles and all decision
 state, and ignores incoming scenario packets until Start is pressed again.
 
-The default UDP destination is the limited broadcast address `255.255.255.255:12345`. The operating-system firewall must allow inbound and outbound UDP port `12345`. WebSocket injection accepts only loopback browser clients with the visualizer's HTTP origin and only validated tagged `TELEMETRY` or `RESET` frames.
+The default UDP destination is the Windows-hotspot subnet broadcast address
+`192.168.137.255:12345`. Set `V2V_BROADCAST_ADDRESS` for another subnet. The
+operating-system firewall must allow inbound and outbound UDP port `12345`.
+WebSocket injection accepts only loopback browser clients with the visualizer's
+HTTP origin and only validated tagged `TELEMETRY` or `RESET` frames.
 
 Optional bridge environment variables:
 
@@ -31,7 +37,12 @@ Optional bridge environment variables:
 | `V2V_UDP_PORT` | `12345` | V2V UDP receive and destination port |
 | `V2V_WS_PORT` | `8080` | WebSocket server port |
 | `V2V_HTTP_PORT` | `8000` | Local visualizer web server port |
-| `V2V_BROADCAST_ADDRESS` | `255.255.255.255` | UDP destination; a subnet-directed broadcast can be used if required by the Wi-Fi adapter |
+| `V2V_HTTP_BIND_ADDRESS` | `0.0.0.0` | HTTP bind address so Pis and phones can reach the bridge |
+| `V2V_BROADCAST_ADDRESS` | `192.168.137.255` | UDP destination; change this to the hotspot's subnet-directed broadcast |
+| `V2V_ALERT_TOKEN` | empty (alerts disabled) | Shared random secret required by Pi uploads and phone sockets |
+
+For the two-phone setup, libcurl/ElevenLabs configuration, media formats, and
+firewall instructions, see [Driver audio setup](../AUDIO_SETUP.md).
 
 ## Packet assumptions
 

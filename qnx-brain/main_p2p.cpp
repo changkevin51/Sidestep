@@ -1,4 +1,5 @@
 #include "car_collision.hpp"
+#include "driver_alert.hpp"
 #include "v2v_network.hpp"
 
 #include <algorithm>
@@ -29,6 +30,10 @@ using Clock = std::chrono::steady_clock;
 
 const double kMaximumTtcSeconds = 10.0;
 const double kSweepStepSeconds = 0.05;
+// Four seconds leaves room for the 150 ms consensus window and a conservative
+// one-second cloud synthesis/socket delivery allowance while avoiding nuisance
+// warnings for distant path intersections.
+const double kDriverAlertThresholdSeconds = 4.0;
 const double kSmartDecisionThresholdSeconds = 3.0;
 const double kMaximumDecelerationMps2 = 7.5;
 const std::chrono::milliseconds kBroadcastPeriod(50);       // 20 Hz
@@ -113,11 +118,9 @@ struct ExecutionEvent {
 
 struct Runtime {
     explicit Runtime(const std::string& own_id,
-                     const std::string& peer_id,
-                     bool enable_audio)
+                     const std::string& peer_id)
         : local_id(own_id),
           configured_peer_id(peer_id),
-          audio_enabled(enable_audio),
           state(SafetyState::MONITORING),
           has_pending(false),
           proposal_transmitted(false),
@@ -127,7 +130,6 @@ struct Runtime {
 
     std::string local_id;
     std::string configured_peer_id;
-    bool audio_enabled;
     std::mutex mutex;
     std::map<std::string, Telemetry> cars;
     SafetyState state;
@@ -495,8 +497,10 @@ Assessment assessTelemetry(const Telemetry& first_telemetry,
 
         const CollisionResult collision = car_collision::sweepForCollision(
             first, second, kMaximumTtcSeconds, kSweepStepSeconds);
-        assessment.collision = collision.will_collide;
-        if (!collision.will_collide) {
+        assessment.collision = collision.will_collide &&
+                               collision.ttc_seconds <=
+                                   kDriverAlertThresholdSeconds;
+        if (!assessment.collision) {
             return assessment;
         }
 
@@ -852,7 +856,8 @@ ExecutionEvent checkConsensusDeadline(Runtime& runtime) {
                                  timeout_reason);
 }
 
-void playWarning(const ExecutionEvent& event, bool enabled) {
+void announceExecution(const ExecutionEvent& event,
+                       DriverAlertService& alerts) {
     if (!event.occurred) {
         return;
     }
@@ -863,41 +868,7 @@ void playWarning(const ExecutionEvent& event, bool enabled) {
             << event.ttc_seconds << "s)";
     logLine(message.str());
 
-    if (!enabled) {
-        return;
-    }
-
-    // Fixed commands avoid shell injection from network-provided action text.
-    // Stock QNX 8.0 has no bundled audio framework, so deployments may provide
-    // /home/qnx/bin/v2v_alert as a GPIO buzzer/LED helper. If an aplay port is
-    // installed, the requested WAV warning remains the fallback.
-    int alert_status = 0;
-    if (event.action == "SWERVE_LEFT" || event.action == "SWERVE_RIGHT") {
-        alert_status = std::system(
-            "if [ -x /home/qnx/bin/v2v_alert ]; then "
-            "/home/qnx/bin/v2v_alert swerve >/dev/null 2>&1 & "
-            "elif command -v aplay >/dev/null 2>&1; then "
-            "aplay /home/qnx/assets/swerve_warning.wav >/dev/null 2>&1 & "
-            "else exit 127; fi");
-    } else if (event.action == "EMERGENCY_STOP") {
-        alert_status = std::system(
-            "if [ -x /home/qnx/bin/v2v_alert ]; then "
-            "/home/qnx/bin/v2v_alert emergency_stop >/dev/null 2>&1 & "
-            "elif command -v aplay >/dev/null 2>&1; then "
-            "aplay /home/qnx/assets/emergency_warning.wav >/dev/null 2>&1 & "
-            "else exit 127; fi");
-    } else {
-        alert_status = std::system(
-            "if [ -x /home/qnx/bin/v2v_alert ]; then "
-            "/home/qnx/bin/v2v_alert brake >/dev/null 2>&1 & "
-            "elif command -v aplay >/dev/null 2>&1; then "
-            "aplay /home/qnx/assets/brake_warning.wav >/dev/null 2>&1 & "
-            "else exit 127; fi");
-    }
-    if (alert_status != 0) {
-        logLine("Warning backend could not be launched; install v2v_alert or "
-                "an aplay-compatible player, or use --no-audio.");
-    }
+    alerts.enqueue(event.action, event.ttc_seconds);
 }
 
 void broadcastLoop(v2v::V2VNetwork& network, Runtime& runtime) {
@@ -989,7 +960,9 @@ void broadcastLoop(v2v::V2VNetwork& network, Runtime& runtime) {
     }
 }
 
-void listenAndProcessLoop(v2v::V2VNetwork& network, Runtime& runtime) {
+void listenAndProcessLoop(v2v::V2VNetwork& network,
+                          Runtime& runtime,
+                          DriverAlertService& alerts) {
     while (gStopRequested == 0) {
         std::string topic;
         std::string payload;
@@ -1006,7 +979,7 @@ void listenAndProcessLoop(v2v::V2VNetwork& network, Runtime& runtime) {
         if (!event.occurred) {
             event = checkConsensusDeadline(runtime);
         }
-        playWarning(event, runtime.audio_enabled);
+        announceExecution(event, alerts);
     }
 }
 
@@ -1087,14 +1060,16 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    Runtime runtime(local_id, peer_id, audio_enabled);
+    Runtime runtime(local_id, peer_id);
+    DriverAlertService alerts(local_id, audio_enabled);
     logLine("V2V brain " + local_id + " listening on UDP 12345.");
+    logLine(alerts.statusMessage());
     logLine("Waiting for SIMULATED telemetry from the laptop injector...");
 
     std::thread broadcaster(broadcastLoop, std::ref(*network),
                             std::ref(runtime));
     std::thread listener(listenAndProcessLoop, std::ref(*network),
-                         std::ref(runtime));
+                         std::ref(runtime), std::ref(alerts));
 
     while (gStopRequested == 0) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
