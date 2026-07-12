@@ -373,6 +373,27 @@
       background: linear-gradient(135deg, rgba(50, 215, 201, 0.98), rgba(44, 167, 181, 0.98));
     }
 
+    .preset-buttons {
+      display: flex;
+      gap: 6px;
+      margin-left: auto;
+    }
+
+    .button.preset {
+      min-height: 26px;
+      padding: 0 9px;
+      font-size: 9px;
+      font-weight: 700;
+      border-radius: 7px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      opacity: 0.7;
+    }
+
+    .button.preset:hover:not(:disabled) {
+      opacity: 1;
+    }
+
     .helper-copy {
       margin: 9px 1px 0;
       color: #718895;
@@ -999,7 +1020,10 @@
       <form id="configForm" novalidate>
         <div class="section-heading">
           <h2>Scenario setup</h2>
-          <span>Decimal GPS</span>
+          <div class="preset-buttons">
+            <button type="button" id="presetVid1" class="button preset">Vid. 1</button>
+            <button type="button" id="presetVid2" class="button preset">Vid. 2</button>
+          </div>
         </div>
 
         <section class="car-config" aria-labelledby="car1-title">
@@ -2433,6 +2457,19 @@
       logButton.addEventListener('click', () => setAuditPanel(true));
       closeLogButton.addEventListener('click', () => setAuditPanel(false));
       clearLogButton.addEventListener('click', clearAuditLog);
+
+      const presetVid1Data = { 'car1-lat': '43.653200', 'car1-lon': '-79.383500', 'car1-heading': '0', 'car1-speed': '10', 'car1-width': '1.9', 'car1-length': '4.6', 'car2-lat': '43.653450', 'car2-lon': '-79.383850', 'car2-heading': '90', 'car2-speed': '10', 'car2-width': '1.9', 'car2-length': '4.6' };
+      const presetVid2Data = { 'car1-lat': '35.178474', 'car1-lon': '-106.625038', 'car1-heading': '90', 'car1-speed': '35.8', 'car1-width': '1.9', 'car1-length': '4.8', 'car2-lat': '35.178100', 'car2-lon': '-106.623194', 'car2-heading': '0', 'car2-speed': '7.5', 'car2-width': '2.9', 'car2-length': '16.5' };
+
+      function applyPreset(data) {
+        for (const [id, value] of Object.entries(data)) {
+          const el = document.getElementById(id);
+          if (el) el.value = value;
+        }
+      }
+
+      presetVid1.addEventListener('click', () => applyPreset(presetVid1Data));
+      presetVid2.addEventListener('click', () => applyPreset(presetVid2Data));
       window.addEventListener('keydown', (event) => {
         if (event.key === 'Escape' && auditPanel.classList.contains('open')) setAuditPanel(false);
       });
