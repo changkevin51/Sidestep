@@ -72,6 +72,17 @@ public:
             ::close(sendFd);
             return false;
         }
+#ifdef SO_REUSEPORT
+        // macOS delivers a local UDP broadcast to multiple SideStep brains and
+        // the laptop bridge only when every listener opts into port reuse.
+        // QNX builds use this when supported and otherwise retain REUSEADDR.
+        if (::setsockopt(receiveFd, SOL_SOCKET, SO_REUSEPORT,
+                         &enabled, sizeof(enabled)) < 0) {
+            ::close(receiveFd);
+            ::close(sendFd);
+            return false;
+        }
+#endif
 
         timeval timeout;
         timeout.tv_sec = 0;

@@ -637,6 +637,97 @@
       box-shadow: 0 0 9px rgba(59, 224, 208, 0.5);
     }
 
+    .control-deck {
+      position: absolute;
+      bottom: 18px;
+      left: 18px;
+      z-index: 2;
+      width: min(620px, calc(100% - 36px));
+      padding: 11px;
+      border: 1px solid var(--line-strong);
+      border-radius: 13px;
+      background: rgba(5, 13, 19, 0.88);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+    }
+
+    .control-deck-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .control-deck-header strong {
+      font-size: 10px;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+
+    .avoidance-status {
+      color: var(--muted);
+      font: 650 10px ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    .avoidance-status.warning { color: var(--yellow); }
+    .avoidance-status.safe { color: var(--green); }
+    .avoidance-status.danger { color: var(--red); }
+
+    .control-cards {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .control-card {
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(16, 31, 43, 0.76);
+    }
+
+    .control-card-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 7px;
+      font-size: 10px;
+    }
+
+    .control-card-title span {
+      color: var(--muted);
+      font: 600 9px ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    .control-values {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 7px;
+    }
+
+    .control-value small,
+    .control-value strong {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .control-value small {
+      margin-bottom: 3px;
+      color: var(--muted);
+      font-size: 8px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .control-value strong {
+      color: var(--cyan);
+      font: 650 10px ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
     .legend {
       position: absolute;
       right: 18px;
@@ -941,6 +1032,13 @@
       .stream-icon {
         display: none;
       }
+
+      .control-deck {
+        right: 10px;
+        bottom: 10px;
+        left: 10px;
+        width: auto;
+      }
     }
 
     @media (max-width: 460px) {
@@ -962,6 +1060,10 @@
 
       .button.primary {
         grid-column: 1 / -1;
+      }
+
+      .control-cards {
+        grid-template-columns: 1fr;
       }
     }
 
@@ -1018,11 +1120,11 @@
             </div>
             <div class="field">
               <label for="car1-heading">Heading <span>°</span></label>
-              <input id="car1-heading" data-car="CAR1" data-field="heading" type="number" value="0" min="0" max="359.999" step="0.1" required>
+              <input id="car1-heading" data-car="CAR1" data-field="heading" type="number" value="90" min="0" max="359.999" step="0.1" required>
             </div>
             <div class="field">
               <label for="car1-speed">Speed <span>m/s</span></label>
-              <input id="car1-speed" data-car="CAR1" data-field="speed" type="number" value="10" min="0" max="80" step="0.1" required>
+              <input id="car1-speed" data-car="CAR1" data-field="speed" type="number" value="35.76" min="0" max="80" step="0.1" required>
             </div>
             <div class="field">
               <label for="car1-width">Width <span>m</span></label>
@@ -1030,7 +1132,7 @@
             </div>
             <div class="field">
               <label for="car1-length">Length <span>m</span></label>
-              <input id="car1-length" data-car="CAR1" data-field="length" type="number" value="4.6" min="1" max="20" step="0.1" required>
+              <input id="car1-length" data-car="CAR1" data-field="length" type="number" value="4.8" min="1" max="20" step="0.1" required>
             </div>
           </div>
         </section>
@@ -1043,27 +1145,27 @@
           <div class="input-grid">
             <div class="field full">
               <label for="car2-lat">Latitude <span>degrees</span></label>
-              <input id="car2-lat" data-car="CAR2" data-field="latitude" type="number" value="43.653450" min="-90" max="90" step="0.000001" required>
+              <input id="car2-lat" data-car="CAR2" data-field="latitude" type="number" value="43.65295898" min="-90" max="90" step="0.000001" required>
             </div>
             <div class="field full">
               <label for="car2-lon">Longitude <span>degrees</span></label>
-              <input id="car2-lon" data-car="CAR2" data-field="longitude" type="number" value="-79.383850" min="-180" max="180" step="0.000001" required>
+              <input id="car2-lon" data-car="CAR2" data-field="longitude" type="number" value="-79.38172008" min="-180" max="180" step="0.000001" required>
             </div>
             <div class="field">
               <label for="car2-heading">Heading <span>°</span></label>
-              <input id="car2-heading" data-car="CAR2" data-field="heading" type="number" value="90" min="0" max="359.999" step="0.1" required>
+              <input id="car2-heading" data-car="CAR2" data-field="heading" type="number" value="0" min="0" max="359.999" step="0.1" required>
             </div>
             <div class="field">
               <label for="car2-speed">Speed <span>m/s</span></label>
-              <input id="car2-speed" data-car="CAR2" data-field="speed" type="number" value="10" min="0" max="80" step="0.1" required>
+              <input id="car2-speed" data-car="CAR2" data-field="speed" type="number" value="6.7" min="0" max="80" step="0.1" required>
             </div>
             <div class="field">
               <label for="car2-width">Width <span>m</span></label>
-              <input id="car2-width" data-car="CAR2" data-field="width" type="number" value="1.9" min="0.5" max="4" step="0.1" required>
+              <input id="car2-width" data-car="CAR2" data-field="width" type="number" value="2.6" min="0.5" max="4" step="0.1" required>
             </div>
             <div class="field">
               <label for="car2-length">Length <span>m</span></label>
-              <input id="car2-length" data-car="CAR2" data-field="length" type="number" value="4.6" min="1" max="20" step="0.1" required>
+              <input id="car2-length" data-car="CAR2" data-field="length" type="number" value="16.5" min="1" max="20" step="0.1" required>
             </div>
           </div>
         </section>
@@ -1129,6 +1231,30 @@
           Detailed log <span id="logCount" class="log-count">0</span>
         </button>
         <div class="map-badge"><i aria-hidden="true"></i><span id="referenceText">LOCAL ENU · awaiting reference</span></div>
+        <section id="controlDeck" class="control-deck" aria-label="Coordinated vehicle controls">
+          <div class="control-deck-header">
+            <strong>Consensus control output</strong>
+            <span id="avoidanceStatus" class="avoidance-status" data-outcome="waiting">Awaiting decision</span>
+          </div>
+          <div class="control-cards">
+            <article id="car1ControlCard" class="control-card" data-testid="car1-control">
+              <div class="control-card-title"><strong>CAR1 · Car A</strong><span id="car1ControlState">Waiting</span></div>
+              <div class="control-values">
+                <div class="control-value"><small>Acceleration</small><strong id="car1Acceleration">-- m/s²</strong></div>
+                <div class="control-value"><small>Steering</small><strong id="car1Steering">--</strong></div>
+                <div class="control-value"><small>Duration</small><strong id="car1Duration">-- s</strong></div>
+              </div>
+            </article>
+            <article id="car2ControlCard" class="control-card" data-testid="car2-control">
+              <div class="control-card-title"><strong>CAR2 · Car B</strong><span id="car2ControlState">Waiting</span></div>
+              <div class="control-values">
+                <div class="control-value"><small>Acceleration</small><strong id="car2Acceleration">-- m/s²</strong></div>
+                <div class="control-value"><small>Steering</small><strong id="car2Steering">--</strong></div>
+                <div class="control-value"><small>Duration</small><strong id="car2Duration">-- s</strong></div>
+              </div>
+            </article>
+          </div>
+        </section>
         <div class="legend" aria-hidden="true">
           <span class="legend-item"><i></i> CAR1</span>
           <span class="legend-item"><i></i> CAR2</span>
@@ -1167,14 +1293,18 @@
       const EARTH_RADIUS_METERS = 6371000;
       const STREAM_INTERVAL_MS = 50;
       const SIMULATION_STEP_SECONDS = 1 / 120;
-      const CONSENSUS_WINDOW_MS = 150;
+      // Covers the optional Gemini path's 20-second request timeout plus peer
+      // skew. The QNX brains still enforce their own decision-specific deadline.
+      const CONSENSUS_WINDOW_MS = 20500;
       const MAX_PACKET_CHARS = 4096;
       const MAX_TRAIL_POINTS = 180;
       const MAX_AUDIT_ENTRIES = 2000;
       const MAX_RENDERED_AUDIT_ENTRIES = 300;
-      const requestedWsPort = Number(new URLSearchParams(window.location.search).get('wsPort'));
+      const urlParameters = new URLSearchParams(window.location.search);
+      const requestedWsPort = Number(urlParameters.get('wsPort'));
       const wsPort = Number.isInteger(requestedWsPort) && requestedWsPort > 0 && requestedWsPort <= 65535
         ? requestedWsPort : 8080;
+      const runGeminiFallbackTest = urlParameters.get('testControls') === 'gemini-fallback';
       const WS_URL = `ws://${window.location.hostname || 'localhost'}:${wsPort}`;
       const CAR_COLORS = ['#3be0d0', '#ffaf5c', '#9b8cff', '#63e69c'];
       const PAGE_SCENARIO_TOKEN = (() => {
@@ -1215,6 +1345,23 @@
       const auditLogBody = document.getElementById('auditLogBody');
       const closeLogButton = document.getElementById('closeLogButton');
       const clearLogButton = document.getElementById('clearLogButton');
+      const avoidanceStatus = document.getElementById('avoidanceStatus');
+      const controlElements = {
+        CAR1: {
+          card: document.getElementById('car1ControlCard'),
+          state: document.getElementById('car1ControlState'),
+          acceleration: document.getElementById('car1Acceleration'),
+          steering: document.getElementById('car1Steering'),
+          duration: document.getElementById('car1Duration'),
+        },
+        CAR2: {
+          card: document.getElementById('car2ControlCard'),
+          state: document.getElementById('car2ControlState'),
+          acceleration: document.getElementById('car2Acceleration'),
+          steering: document.getElementById('car2Steering'),
+          duration: document.getElementById('car2Duration'),
+        },
+      };
 
       const cars = new Map();
       const proposals = new Map();
@@ -1251,6 +1398,9 @@
       let auditRenderedCount = 0;
       let auditSequence = 0;
       let lastConsensusAudit = '';
+      let controlPlanReceived = false;
+      let collisionDetected = false;
+      let avoidanceVerificationUntil = 0;
       const camera = { x: 0, y: 0, scale: 8 };
 
       function clamp(value, minimum, maximum) {
@@ -1295,6 +1445,58 @@
 
       function isPhysicalAction(action) {
         return ['BRAKE', 'EMERGENCY_STOP', 'SWERVE_LEFT', 'SWERVE_RIGHT'].includes(normalizeAction(action));
+      }
+
+      function controlAction(control) {
+        if (control.steeringRate < -0.001) return 'SWERVE_LEFT';
+        if (control.steeringRate > 0.001) return 'SWERVE_RIGHT';
+        if (control.acceleration <= -8.5) return 'EMERGENCY_STOP';
+        if (control.acceleration < -0.001) return 'BRAKE';
+        if (control.acceleration > 0.001) return 'ACCELERATE';
+        return 'NONE';
+      }
+
+      function formatControl(control) {
+        return `accel=${control.acceleration.toFixed(3)} m/s², steer=${control.steeringRate.toFixed(3)}°/s, duration=${control.duration.toFixed(3)} s`;
+      }
+
+      function steeringDirection(rate) {
+        if (rate < -0.001) return 'Left';
+        if (rate > 0.001) return 'Right';
+        return 'Straight';
+      }
+
+      function resetControlDisplay() {
+        controlPlanReceived = false;
+        collisionDetected = false;
+        avoidanceVerificationUntil = 0;
+        avoidanceStatus.textContent = 'Awaiting decision';
+        avoidanceStatus.className = 'avoidance-status';
+        avoidanceStatus.dataset.outcome = 'waiting';
+        for (const elements of Object.values(controlElements)) {
+          elements.card.removeAttribute('data-acceleration');
+          elements.card.removeAttribute('data-steering-rate');
+          elements.card.removeAttribute('data-duration');
+          elements.state.textContent = 'Waiting';
+          elements.acceleration.textContent = '-- m/s²';
+          elements.steering.textContent = '--';
+          elements.duration.textContent = '-- s';
+        }
+      }
+
+      function updateControlDisplay(car, now) {
+        const elements = controlElements[car.id];
+        if (!elements || !car.controlSignature) return;
+        const remaining = Math.max(0, (car.actionUntil - now) / 1000);
+        const direction = steeringDirection(car.steeringRate);
+        const totalHeadingChange = car.steeringRate * car.controlDuration;
+        elements.card.dataset.acceleration = car.acceleration.toFixed(3);
+        elements.card.dataset.steeringRate = car.steeringRate.toFixed(3);
+        elements.card.dataset.duration = car.controlDuration.toFixed(3);
+        elements.state.textContent = remaining > 0 ? `Active · ${remaining.toFixed(1)} s left` : 'Complete';
+        elements.acceleration.textContent = `${car.acceleration.toFixed(3)} m/s²`;
+        elements.steering.textContent = `${direction} ${car.steeringRate.toFixed(3)}°/s · Δ${totalHeadingChange.toFixed(3)}°`;
+        elements.duration.textContent = `${car.controlDuration.toFixed(3)} s`;
       }
 
       function chooseCarColor(id) {
@@ -1472,6 +1674,10 @@
           action: 'NONE',
           actionStartedAt: 0,
           actionUntil: 0,
+          acceleration: 0,
+          steeringRate: 0,
+          controlDuration: 0,
+          controlSignature: '',
           isLocal,
           color: chooseCarColor(config.id),
           trail: [],
@@ -1491,6 +1697,7 @@
         activityEntries.length = 0;
         colorSequence = 0;
         latestTtc = null;
+        resetControlDisplay();
         consensusLockedUntil = 0;
         lastLocalIntegrationTime = 0;
         localSimulationAccumulator = 0;
@@ -1512,6 +1719,18 @@
           cars.set(car.id, car);
           appendTrail(car, true);
           addAudit('SYSTEM', 'Vehicle initialized', `lat=${car.latitude.toFixed(6)}, lon=${car.longitude.toFixed(6)}, heading=${car.heading.toFixed(1)} deg, speed=${car.speed.toFixed(1)} m/s, size=${car.length.toFixed(1)} x ${car.width.toFixed(1)} m`, car.id);
+        }
+
+        // Explicit browser-only verification hook. It exercises the same
+        // EXECUTION/control path with the Gemini client's deterministic output
+        // without requiring UDP timing or a paid API call.
+        if (runGeminiFallbackTest) {
+          const exampleControl = { acceleration: -8.0, steeringRate: 0.0, duration: 1.5 };
+          applyControl('CAR1', exampleControl, 'EXECUTE_TEST', 3.75);
+          applyControl('CAR2', exampleControl, 'EXECUTE_TEST', 3.75);
+          setTtc(3.75);
+          setConsensus('Executing test control', 'safe');
+          addAudit('TEST', 'Gemini fallback animation test enabled', 'Applied -8.000 m/s², 0.000°/s for 1.500 s to both vehicles at scenario start.');
         }
 
         cameraInitialized = false;
@@ -1622,14 +1841,9 @@
       }
 
       function integrateCarMotion(car, elapsed, now) {
-        if (car.action === 'BRAKE') {
-          car.speed = Math.max(0, car.speed - 7.5 * elapsed);
-        } else if (car.action === 'EMERGENCY_STOP') {
-          car.speed = Math.max(0, car.speed - 9.0 * elapsed);
-        } else if (car.action === 'SWERVE_LEFT' && now <= car.actionUntil) {
-          car.heading = normalizeHeading(car.heading - 28 * elapsed);
-        } else if (car.action === 'SWERVE_RIGHT' && now <= car.actionUntil) {
-          car.heading = normalizeHeading(car.heading + 28 * elapsed);
+        if (now <= car.actionUntil) {
+          car.speed = clamp(car.speed + car.acceleration * elapsed, 0, 120);
+          car.heading = normalizeHeading(car.heading + car.steeringRate * elapsed);
         }
 
         const headingRadians = car.heading * Math.PI / 180;
@@ -1672,6 +1886,7 @@
         cars.clear();
         proposals.clear();
         pendingActions.clear();
+        resetControlDisplay();
         worldReference = null;
         latestTtc = null;
         consensusLockedUntil = 0;
@@ -1809,23 +2024,35 @@
         }
         if (pendingActions.has(parsed.id)) {
           const pending = pendingActions.get(parsed.id);
-          applyAction(parsed.id, pending.action, pending.state);
+          if (pending.control) applyControl(parsed.id, pending.control, pending.state, pending.ttcSeconds);
+          else applyAction(parsed.id, pending.action, pending.state);
         }
       }
 
       function parseProposal(fields) {
-        if (fields.length !== 4 || !validVehicleId(fields[1])) {
-          addAudit('DROP', 'PROPOSAL schema verification failed', 'Expected PROPOSAL,sender_id,car_1_action,car_2_action.');
+        if (fields.length !== 8 || !validVehicleId(fields[1])) {
+          addAudit('DROP', 'PROPOSAL schema verification failed', 'Expected PROPOSAL,sender_id,car1_accel,car1_steering_rate,car1_duration,car2_accel,car2_steering_rate,car2_duration.');
           return;
         }
         const senderId = fields[1];
-        const car1Action = normalizeAction(fields[2]);
-        const car2Action = normalizeAction(fields[3]);
-        const signature = `${car1Action}|${car2Action}`;
-        proposals.set(senderId, { senderId, car1Action, car2Action, signature, receivedAt: Date.now() });
-        addActivity('PLAN', `${senderId}: ${formatAction(car1Action)} / ${formatAction(car2Action)}`);
-        addAudit('ACTION', 'Proposed action for CAR1', `${senderId} proposes ${formatAction(car1Action)}.`, 'CAR1');
-        addAudit('ACTION', 'Proposed action for CAR2', `${senderId} proposes ${formatAction(car2Action)}.`, 'CAR2');
+        const values = fields.slice(2).map(Number);
+        const car1Control = { acceleration: values[0], steeringRate: values[1], duration: values[2] };
+        const car2Control = { acceleration: values[3], steeringRate: values[4], duration: values[5] };
+        const controlsValid = finiteInRange(car1Control.acceleration, -12, 5)
+          && finiteInRange(car1Control.steeringRate, -90, 90)
+          && finiteInRange(car1Control.duration, 0, 10)
+          && finiteInRange(car2Control.acceleration, -12, 5)
+          && finiteInRange(car2Control.steeringRate, -90, 90)
+          && finiteInRange(car2Control.duration, 0, 10);
+        if (!controlsValid) {
+          addAudit('DROP', 'PROPOSAL numeric verification failed', 'Controls must be finite and inside the supported acceleration, steering-rate, and duration ranges.', senderId);
+          return;
+        }
+        const signature = values.map((value) => value.toFixed(3)).join('|');
+        proposals.set(senderId, { senderId, car1Control, car2Control, signature, receivedAt: Date.now() });
+        addActivity('PLAN', `${senderId}: ${formatAction(controlAction(car1Control))} / ${formatAction(controlAction(car2Control))}`);
+        addAudit('ACTION', 'Proposed control for CAR1', `${senderId} proposes ${formatControl(car1Control)}.`, 'CAR1');
+        addAudit('ACTION', 'Proposed control for CAR2', `${senderId} proposes ${formatControl(car2Control)}.`, 'CAR2');
         evaluateConsensus();
       }
 
@@ -1851,20 +2078,47 @@
           const delta = Math.max(...receivedTimes) - Math.min(...receivedTimes);
           const auditSignature = `matched:${recent.map((proposal) => proposal.senderId).sort().join('|')}:${recent[0].signature}`;
           if (auditSignature !== lastConsensusAudit) {
-            addAudit('VERIFY', 'Consensus verified: MATCH', `${recent.map((proposal) => proposal.senderId).join(' + ')} agree on CAR1=${formatAction(recent[0].car1Action)}, CAR2=${formatAction(recent[0].car2Action)}; arrival delta=${delta} ms.`);
+            addAudit('VERIFY', 'Consensus verified: MATCH', `${recent.map((proposal) => proposal.senderId).join(' + ')} agree on CAR1(${formatControl(recent[0].car1Control)}), CAR2(${formatControl(recent[0].car2Control)}); arrival delta=${delta} ms.`);
             lastConsensusAudit = auditSignature;
           }
         } else {
           setConsensus('Mismatch', 'danger');
           const auditSignature = `mismatch:${recent.map((proposal) => `${proposal.senderId}:${proposal.signature}`).sort().join('|')}`;
           if (auditSignature !== lastConsensusAudit) {
-            addAudit('VERIFY', 'Consensus verification failed: MISMATCH', recent.map((proposal) => `${proposal.senderId} says CAR1=${formatAction(proposal.car1Action)}, CAR2=${formatAction(proposal.car2Action)}`).join('; '));
+            addAudit('VERIFY', 'Consensus verification failed: MISMATCH', recent.map((proposal) => `${proposal.senderId} says CAR1(${formatControl(proposal.car1Control)}), CAR2(${formatControl(proposal.car2Control)})`).join('; '));
             lastConsensusAudit = auditSignature;
           }
         }
       }
 
       function parseExecution(fields) {
+        // Continuous-control packet:
+        // EXECUTION,car_id,acceleration,steering_rate,duration,state,ttc
+        if (fields.length === 7 && validVehicleId(fields[1])) {
+          const carId = fields[1];
+          const control = {
+            acceleration: Number(fields[2]),
+            steeringRate: Number(fields[3]),
+            duration: Number(fields[4]),
+          };
+          const state = fields[5].slice(0, 32);
+          const ttc = Number(fields[6]);
+          if (!finiteInRange(control.acceleration, -12, 5)
+              || !finiteInRange(control.steeringRate, -90, 90)
+              || !finiteInRange(control.duration, 0, 10)) {
+            addAudit('DROP', 'EXECUTION control verification failed', 'Control values are outside the supported acceleration, steering-rate, or duration range.', carId);
+            return;
+          }
+          applyControl(carId, control, state, ttc);
+          if (Number.isFinite(ttc)) setTtc(ttc);
+          const emergency = control.acceleration <= -8.5 || state.toUpperCase().includes('EMERGENCY');
+          setConsensus(emergency ? 'Emergency fallback' : 'Executing', emergency ? 'danger' : 'safe');
+          consensusLockedUntil = Date.now() + 3000;
+          addAudit('EXEC', 'Continuous control verified', `${formatControl(control)}; state=${state}; TTC=${Number.isFinite(ttc) ? `${ttc.toFixed(2)} s` : 'invalid/not supplied'}`, carId);
+          addActivity('EXEC', `${carId}: ${formatAction(controlAction(control))} · ${state}`);
+          return;
+        }
+
         // Canonical Pi packet: EXECUTION,car_id,action,state,ttc
         if (fields.length === 5 && validVehicleId(fields[1]) && fields[4] !== '') {
           const carId = fields[1];
@@ -1938,7 +2192,12 @@
           car.action = action;
           car.executionState = state || 'EXECUTE';
           car.actionStartedAt = performance.now();
-          car.actionUntil = car.actionStartedAt + 2200;
+          car.acceleration = action === 'EMERGENCY_STOP' ? -9.0 : (action === 'BRAKE' ? -7.5 : 0.0);
+          car.steeringRate = action === 'SWERVE_LEFT' ? -28.0 : (action === 'SWERVE_RIGHT' ? 28.0 : 0.0);
+          const legacyDuration = ['BRAKE', 'EMERGENCY_STOP'].includes(action) ? 10.0 : 2.2;
+          car.controlDuration = legacyDuration;
+          car.actionUntil = action === 'NONE' ? 0 : car.actionStartedAt + legacyDuration * 1000;
+          car.controlSignature = '';
           addAudit('ACTION', 'Vehicle action changed', `${formatAction(priorAction)} -> ${formatAction(action)}; execution state=${state || 'EXECUTE'}.`, carId);
         } else if (car) {
           car.executionState = state || car.executionState;
@@ -1948,6 +2207,49 @@
 
         if (action !== 'NONE') {
           const tone = ['BRAKE', 'EMERGENCY_STOP'].includes(action) ? 'danger' : 'warning';
+          setLatestAction(`${carId} · ${formatAction(action)}`, tone);
+        }
+      }
+
+      function applyControl(carId, control, state, ttcSeconds = NaN) {
+        const normalizedControl = {
+          acceleration: Number(control.acceleration),
+          steeringRate: Number(control.steeringRate),
+          duration: Math.max(0, Number(control.duration)),
+        };
+        const action = controlAction(normalizedControl);
+        const signature = `${normalizedControl.acceleration.toFixed(3)}|${normalizedControl.steeringRate.toFixed(3)}|${normalizedControl.duration.toFixed(3)}`;
+        pendingActions.set(carId, { control: normalizedControl, state, ttcSeconds, receivedAt: Date.now() });
+
+        const car = cars.get(carId);
+        if (car && car.controlSignature !== signature) {
+          const priorAction = car.action;
+          car.action = action;
+          car.acceleration = normalizedControl.acceleration;
+          car.steeringRate = normalizedControl.steeringRate;
+          car.controlDuration = normalizedControl.duration;
+          car.controlSignature = signature;
+          car.executionState = state || 'EXECUTE';
+          car.actionStartedAt = performance.now();
+          car.actionUntil = car.actionStartedAt + normalizedControl.duration * 1000;
+          controlPlanReceived = true;
+          const verificationSeconds = Math.max(
+            normalizedControl.duration + 0.5,
+            Number.isFinite(ttcSeconds) ? ttcSeconds + 0.75 : 5.0,
+          );
+          avoidanceVerificationUntil = Math.max(
+            avoidanceVerificationUntil,
+            car.actionStartedAt + verificationSeconds * 1000,
+          );
+          addAudit('ACTION', 'Vehicle control changed', `${formatAction(priorAction)} -> ${formatAction(action)}; ${formatControl(normalizedControl)}; execution state=${state || 'EXECUTE'}.`, carId);
+        } else if (car) {
+          car.executionState = state || car.executionState;
+        } else {
+          addAudit('ACTION', 'Control queued until telemetry arrives', `${formatControl(normalizedControl)}; execution state=${state || 'EXECUTE'}.`, carId);
+        }
+
+        if (action !== 'NONE') {
+          const tone = normalizedControl.acceleration < -0.001 ? 'danger' : 'warning';
           setLatestAction(`${carId} · ${formatAction(action)}`, tone);
         }
       }
@@ -1973,6 +2275,57 @@
           x: longitudeDelta * Math.PI / 180 * EARTH_RADIUS_METERS * Math.cos(referenceRadians),
           y: (latitude - worldReference.latitude) * Math.PI / 180 * EARTH_RADIUS_METERS,
         };
+      }
+
+      function carAxes(car) {
+        const radians = car.heading * Math.PI / 180;
+        return {
+          forward: { x: Math.sin(radians), y: Math.cos(radians) },
+          right: { x: Math.cos(radians), y: -Math.sin(radians) },
+        };
+      }
+
+      function projectedRadius(car, axes, axis) {
+        const forwardProjection = Math.abs(axes.forward.x * axis.x + axes.forward.y * axis.y);
+        const rightProjection = Math.abs(axes.right.x * axis.x + axes.right.y * axis.y);
+        return car.length * 0.5 * forwardProjection + car.width * 0.5 * rightProjection;
+      }
+
+      function carsOverlap(first, second) {
+        const firstCenter = toLocalMeters(first.latitude, first.longitude);
+        const secondCenter = toLocalMeters(second.latitude, second.longitude);
+        const delta = { x: secondCenter.x - firstCenter.x, y: secondCenter.y - firstCenter.y };
+        const firstAxes = carAxes(first);
+        const secondAxes = carAxes(second);
+        const axes = [firstAxes.forward, firstAxes.right, secondAxes.forward, secondAxes.right];
+        return axes.every((axis) => {
+          const centerDistance = Math.abs(delta.x * axis.x + delta.y * axis.y);
+          return centerDistance <= projectedRadius(first, firstAxes, axis)
+            + projectedRadius(second, secondAxes, axis);
+        });
+      }
+
+      function updateAvoidanceOutcome(now) {
+        const trackedCars = [...cars.values()].filter((car) => car.isLocal);
+        if (trackedCars.length === 2 && carsOverlap(trackedCars[0], trackedCars[1])) {
+          collisionDetected = true;
+        }
+        if (collisionDetected) {
+          avoidanceStatus.textContent = 'Collision detected';
+          avoidanceStatus.className = 'avoidance-status danger';
+          avoidanceStatus.dataset.outcome = 'collision';
+          return;
+        }
+        if (!controlPlanReceived) return;
+        if (now < avoidanceVerificationUntil) {
+          avoidanceStatus.textContent = 'Executing · verifying separation';
+          avoidanceStatus.className = 'avoidance-status warning';
+          avoidanceStatus.dataset.outcome = 'executing';
+          return;
+        }
+        avoidanceStatus.textContent = 'Avoided · no vehicle overlap';
+        avoidanceStatus.className = 'avoidance-status safe';
+        avoidanceStatus.dataset.outcome = 'avoided';
       }
 
       function resizeCanvas() {
@@ -2052,6 +2405,7 @@
         drawTrails();
         drawPredictedPaths();
         for (const car of cars.values()) drawCar(car, timestamp);
+        updateAvoidanceOutcome(timestamp);
 
         if (timestamp - lastUiUpdate > 220) {
           updateUi(false);
@@ -2209,6 +2563,11 @@
         if (car.action !== 'NONE') {
           context.fillStyle = braking ? '#ff8b93' : '#bdadff';
           context.fillText(formatAction(car.action).toUpperCase(), screen.x + width / 2 + 8, screen.y + 23);
+          if (car.controlSignature) {
+            context.fillStyle = 'rgba(220, 239, 247, 0.9)';
+            context.fillText(`${car.acceleration.toFixed(3)} m/s² · ${steeringDirection(car.steeringRate)} ${car.steeringRate.toFixed(3)}°/s`, screen.x + width / 2 + 8, screen.y + 36);
+            context.fillText(`${car.controlDuration.toFixed(3)} s command`, screen.x + width / 2 + 8, screen.y + 49);
+          }
         }
         context.restore();
       }
@@ -2252,6 +2611,8 @@
           vehicleList.innerHTML = '<div class="vehicle-empty">Waiting for telemetry</div>';
         } else {
           const sortedCars = [...cars.values()].sort((first, second) => first.id.localeCompare(second.id));
+          const uiNow = performance.now();
+          for (const car of sortedCars) updateControlDisplay(car, uiNow);
           vehicleList.replaceChildren(...sortedCars.map((car) => {
             const row = document.createElement('div');
             row.className = 'vehicle-row';

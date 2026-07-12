@@ -1,5 +1,10 @@
 #include "car_collision.hpp"
+#include "joint_actions.hpp"
 #include "v2v_network.hpp"
+
+#ifdef SIDESTEP_ENABLE_GEMINI
+#include "gemini_client.hpp"
+#endif
 
 #include <algorithm>
 #include <atomic>
@@ -31,8 +36,21 @@ const double kMaximumTtcSeconds = 10.0;
 const double kSweepStepSeconds = 0.05;
 const double kSmartDecisionThresholdSeconds = 3.0;
 const double kMaximumDecelerationMps2 = 7.5;
+const double kEmergencyStopDecelerationMps2 = 9.0;
+const double kEmergencyStopDurationSeconds = 4.0;
+const double kDefaultSteeringRateDegPerSecond = 28.0;
+const double kDefaultSwerveDurationSeconds = 2.2;
+const double kMinimumControlAccelerationMps2 = -12.0;
+const double kMaximumControlAccelerationMps2 = 5.0;
+const double kMaximumSteeringRateDegPerSecond = 90.0;
+const double kMaximumControlDurationSeconds = 10.0;
 const std::chrono::milliseconds kBroadcastPeriod(50);       // 20 Hz
 const std::chrono::milliseconds kConsensusTimeout(150);
+#ifdef SIDESTEP_ENABLE_GEMINI
+const std::chrono::milliseconds kGeminiRequestTimeout(20000);
+const std::chrono::milliseconds kGeminiConnectTimeout(1000);
+#endif
+const std::chrono::milliseconds kGeminiConsensusTimeout(20500);
 const std::chrono::milliseconds kTelemetryFreshness(750);
 const std::chrono::milliseconds kMaximumPairArrivalSkew(125);
 const std::chrono::milliseconds kPostMatchProposalRelay(250);
@@ -79,12 +97,6 @@ struct Telemetry {
           received_at(Clock::now()) {}
 };
 
-struct JointActions {
-    std::string car1_action;
-    std::string car2_action;
-    std::string decision_path;
-};
-
 struct PendingProposal {
     std::string car1_id;
     std::string car2_id;
@@ -104,7 +116,7 @@ struct Assessment {
 
 struct ExecutionEvent {
     bool occurred;
-    std::string action;
+    VehicleControl control;
     double ttc_seconds;
     std::string reason;
 
@@ -136,7 +148,7 @@ struct Runtime {
     PendingProposal pending;
     Clock::time_point proposal_deadline;
     Clock::time_point proposal_relay_until;
-    std::string execution_action;
+    VehicleControl execution_control;
     double execution_ttc;
     Clock::time_point execution_started;
     bool clear_timer_active;
@@ -222,6 +234,18 @@ bool validStateText(const std::string& state) {
     return validIdentifier(state);
 }
 
+bool validVehicleControl(const VehicleControl& control) {
+    return std::isfinite(control.acceleration_mps2) &&
+           std::isfinite(control.steering_rate_deg_per_second) &&
+           std::isfinite(control.duration_seconds) &&
+           control.acceleration_mps2 >= kMinimumControlAccelerationMps2 &&
+           control.acceleration_mps2 <= kMaximumControlAccelerationMps2 &&
+           std::fabs(control.steering_rate_deg_per_second) <=
+               kMaximumSteeringRateDegPerSecond &&
+           control.duration_seconds >= 0.0 &&
+           control.duration_seconds <= kMaximumControlDurationSeconds;
+}
+
 std::string scenarioIdFromState(const std::string& state) {
     const char* prefixes[] = {
         "SIMULATED_", "SENSOR_", "INJECTED_", "MONITORING_",
@@ -278,26 +302,27 @@ bool parseProposal(const std::string& payload,
                    std::string& sender_id,
                    JointActions& actions) {
     std::vector<std::string> fields;
-    if (!splitCsvExact(payload, 3U, fields) ||
+    if (!splitCsvExact(payload, 7U, fields) ||
         !validIdentifier(fields[0])) {
         return false;
     }
-    const std::string allowed_actions[] = {
-        "BRAKE", "SWERVE_RIGHT", "SWERVE_LEFT"
-    };
-    bool first_allowed = false;
-    bool second_allowed = false;
-    for (std::size_t i = 0U; i < 3U; ++i) {
-        first_allowed = first_allowed || fields[1] == allowed_actions[i];
-        second_allowed = second_allowed || fields[2] == allowed_actions[i];
-    }
-    if (!first_allowed || !second_allowed) {
+
+    JointActions parsed;
+    if (!parseFiniteDouble(fields[1], parsed.car1.acceleration_mps2) ||
+        !parseFiniteDouble(fields[2],
+                           parsed.car1.steering_rate_deg_per_second) ||
+        !parseFiniteDouble(fields[3], parsed.car1.duration_seconds) ||
+        !parseFiniteDouble(fields[4], parsed.car2.acceleration_mps2) ||
+        !parseFiniteDouble(fields[5],
+                           parsed.car2.steering_rate_deg_per_second) ||
+        !parseFiniteDouble(fields[6], parsed.car2.duration_seconds) ||
+        !validVehicleControl(parsed.car1) ||
+        !validVehicleControl(parsed.car2)) {
         return false;
     }
+
     sender_id = fields[0];
-    actions.car1_action = fields[1];
-    actions.car2_action = fields[2];
-    actions.decision_path.clear();
+    actions = parsed;
     return true;
 }
 
@@ -313,7 +338,10 @@ std::string safetyStateText(const Runtime& runtime) {
             return "MONITORING";
         case SafetyState::PROPOSING:
             if (runtime.has_pending &&
-                runtime.pending.actions.decision_path == "SMART_AI_STUB") {
+                (runtime.pending.actions.decision_path == "SMART_AI_STUB" ||
+                 runtime.pending.actions.decision_path == "GEMMA_3" ||
+                 runtime.pending.actions.decision_path ==
+                     "GEMINI_3_5_FLASH")) {
                 return "AI_ANALYZING";
             }
             return "PROPOSING";
@@ -346,19 +374,40 @@ std::string formatTelemetryPayload(const Telemetry& telemetry,
 
 std::string formatProposalPayload(const std::string& sender_id,
                                   const PendingProposal& proposal) {
-    return sender_id + "," + proposal.actions.car1_action + "," +
-           proposal.actions.car2_action;
+    return sender_id + "," +
+           formatDouble(proposal.actions.car1.acceleration_mps2, 3) + "," +
+           formatDouble(
+               proposal.actions.car1.steering_rate_deg_per_second, 3) + "," +
+           formatDouble(proposal.actions.car1.duration_seconds, 3) + "," +
+           formatDouble(proposal.actions.car2.acceleration_mps2, 3) + "," +
+           formatDouble(
+               proposal.actions.car2.steering_rate_deg_per_second, 3) + "," +
+           formatDouble(proposal.actions.car2.duration_seconds, 3);
 }
 
 std::string formatExecutionPayload(const Runtime& runtime) {
-    return runtime.local_id + "," + runtime.execution_action + "," +
-           safetyStateText(runtime) + "," +
+    return runtime.local_id + "," +
+           formatDouble(runtime.execution_control.acceleration_mps2, 3) + "," +
+           formatDouble(
+               runtime.execution_control.steering_rate_deg_per_second, 3) +
+           "," + formatDouble(runtime.execution_control.duration_seconds, 3) +
+           "," + safetyStateText(runtime) + "," +
            formatDouble(runtime.execution_ttc, 3);
 }
 
+bool controlsMatch(const VehicleControl& first, const VehicleControl& second) {
+    const double tolerance = 0.000501;
+    return std::fabs(first.acceleration_mps2 - second.acceleration_mps2) <=
+               tolerance &&
+           std::fabs(first.steering_rate_deg_per_second -
+                     second.steering_rate_deg_per_second) <= tolerance &&
+           std::fabs(first.duration_seconds - second.duration_seconds) <=
+               tolerance;
+}
+
 bool actionsMatch(const JointActions& first, const JointActions& second) {
-    return first.car1_action == second.car1_action &&
-           first.car2_action == second.car2_action;
+    return controlsMatch(first.car1, second.car1) &&
+           controlsMatch(first.car2, second.car2);
 }
 
 bool proposalsMatch(const PendingProposal& first,
@@ -366,6 +415,22 @@ bool proposalsMatch(const PendingProposal& first,
     return first.car1_id == second.car1_id &&
            first.car2_id == second.car2_id &&
            actionsMatch(first.actions, second.actions);
+}
+
+std::chrono::milliseconds consensusTimeoutFor(
+    const JointActions& actions) {
+    return actions.decision_path == "GEMINI_3_5_FLASH"
+        ? kGeminiConsensusTimeout
+        : kConsensusTimeout;
+}
+
+std::string consensusTimeoutReason(const PendingProposal& proposal,
+                                   bool local_send_failed) {
+    const std::chrono::milliseconds timeout =
+        consensusTimeoutFor(proposal.actions);
+    return std::to_string(timeout.count()) +
+           " ms consensus timeout" +
+           (local_send_failed ? " (local proposal send failed)" : "");
 }
 
 double cross(const Vec2& first, const Vec2& second) {
@@ -429,39 +494,156 @@ JointActions evaluateDefaultDecision(const Car& first,
     const bool second_can_stop = second.speed_mps <= 0.01 ||
                                  second_distance > second_stopping_distance;
     if (first_can_stop && second_can_stop) {
-        actions.car1_action = "BRAKE";
-        actions.car2_action = "BRAKE";
+        actions.car1 = VehicleControl(
+            -kMaximumDecelerationMps2,
+            0.0,
+            first.speed_mps / kMaximumDecelerationMps2);
+        actions.car2 = VehicleControl(
+            -kMaximumDecelerationMps2,
+            0.0,
+            second.speed_mps / kMaximumDecelerationMps2);
     } else {
         // The canonical lower-ID car always moves right and the higher-ID car
         // left. Both Pis therefore derive the same opposite-direction plan.
-        actions.car1_action = "SWERVE_RIGHT";
-        actions.car2_action = "SWERVE_LEFT";
+        actions.car1 = VehicleControl(
+            0.0,
+            kDefaultSteeringRateDegPerSecond,
+            kDefaultSwerveDurationSeconds);
+        actions.car2 = VehicleControl(
+            0.0,
+            -kDefaultSteeringRateDegPerSecond,
+            kDefaultSwerveDurationSeconds);
     }
     return actions;
 }
 
 // -------------------------------------------------------------------------
-// SMART (AI stub) PATHWAY -- used only when TTC >= 3.0 seconds.
+// SMART PATHWAY -- used only when TTC >= 3.0 seconds.
 // -------------------------------------------------------------------------
-JointActions evaluateSmartDecision(Car first, Car second) {
-    // Future onboard-model integration point:
-    //   1. Serialize both validated Car objects into model features.
-    //   2. Invoke the local QNX-hosted model with a strict bounded deadline.
-    //   3. Validate that it returned one action per canonical vehicle.
-    //   4. Fall back to deterministic braking on timeout/invalid output.
-    // No cloud service belongs in this safety-critical execution path.
-    (void)first;
-    (void)second;
+JointActions smartBrakingFallback(const Car& first, const Car& second) {
+    JointActions fallback;
+    fallback.car1 = VehicleControl(
+        -kMaximumDecelerationMps2,
+        0.0,
+        first.speed_mps / kMaximumDecelerationMps2);
+    fallback.car2 = VehicleControl(
+        -kMaximumDecelerationMps2,
+        0.0,
+        second.speed_mps / kMaximumDecelerationMps2);
+    fallback.decision_path = "SMART_BRAKING_FALLBACK";
+    return fallback;
+}
 
-    JointActions mock_result;
-    mock_result.car1_action = "BRAKE";
-    mock_result.car2_action = "BRAKE";
-    mock_result.decision_path = "SMART_AI_STUB";
-    return mock_result;
+JointActions evaluateSmartDecision(const Car& first,
+                                   const Car& second,
+                                   double ttc_seconds) {
+#ifdef SIDESTEP_ENABLE_GEMINI
+    // SideStep's canonical first/second ordering maps directly to Gemini's
+    // Car A/Car B ordering, so both peers build the same model input.
+    collision_ai::VehicleState state;
+    state.timeToCollision = ttc_seconds;
+    state.carAX = first.center.x;
+    state.carAY = first.center.y;
+    state.carASpeed = first.speed_mps;
+    state.carAHeading = first.heading_deg;
+    state.carAAcceleration = 0.0;  // Not present in current telemetry packets.
+    state.carAWidth = first.width_m;
+    state.carALength = first.length_m;
+
+    state.carBX = second.center.x;
+    state.carBY = second.center.y;
+    state.carBSpeed = second.speed_mps;
+    state.carBHeading = second.heading_deg;
+    state.carBAcceleration = 0.0;  // Not present in current telemetry packets.
+    state.carBWidth = second.width_m;
+    state.carBLength = second.length_m;
+
+    const Vec2 intersection =
+        estimatedIntersectionPoint(first, second, ttc_seconds);
+    state.carADistanceToCollision = (intersection - first.center).length();
+    state.carBDistanceToCollision = (intersection - second.center).length();
+    // This deployment uses the same fixed road/obstacle context as the Gemini
+    // client's demonstration main.cpp. Kinematics remain live so the model sees
+    // the current SideStep positions, speeds, headings, dimensions, and TTC.
+    state.scene.carALeftClear = false;
+    state.scene.carARightClear = false;
+    state.scene.carAAheadOccupied = true;
+    state.scene.carABehindOccupied = false;
+    state.scene.carBLeftClear = false;
+    state.scene.carBRightClear = false;
+    state.scene.carBAheadOccupied = false;
+    state.scene.carBBehindOccupied = false;
+    state.scene.carALeftHazard =
+        "Concrete highway median barrier separating frontage road from "
+        "Interstate 40.";
+    state.scene.carARightHazard =
+        "Steep soil embankment and bridge concrete support structure.";
+    state.scene.carAAheadHazard =
+        "Flatbed semi-truck trailer crossing perpendicular to the travel lane.";
+    state.scene.carBLeftHazard =
+        "Bridge underpass concrete pillars and abutment wall.";
+    state.scene.carBRightHazard =
+        "Bridge underpass concrete pillars and opposing road curb.";
+    state.scene.pedestrianPresent = false;
+    state.scene.wetRoad = false;
+    state.scene.intersection = true;
+    state.scene.constructionZone = false;
+    state.scene.additionalDescription =
+        "High-speed frontage road underpass conflict. High concrete barriers "
+        "and bridge structures remove any lateral escape paths for both "
+        "vehicles.";
+
+    try {
+        collision_ai::GeminiClient::Config config;
+        if (const char* api_key = std::getenv("GEMINI_API_KEY")) {
+            config.apiKey = api_key;
+        }
+        if (const char* endpoint = std::getenv("GEMINI_API_ENDPOINT")) {
+            config.endpoint = endpoint;
+        }
+        if (const char* model = std::getenv("GEMINI_MODEL")) {
+            config.model = model;
+        }
+
+        config.timeout = kGeminiRequestTimeout;
+        config.connectTimeout = kGeminiConnectTimeout;
+
+        const collision_ai::GeminiClient client(config);
+        const collision_ai::CollisionAvoidanceDecision decision =
+            client.getDecision(state);
+
+        JointActions result;
+        result.car1 = VehicleControl(
+            decision.carA.accelerationMps2,
+            decision.carA.steeringRateDegreesPerSecond,
+            decision.carA.steeringDurationSeconds);
+        result.car2 = VehicleControl(
+            decision.carB.accelerationMps2,
+            decision.carB.steeringRateDegreesPerSecond,
+            decision.carB.steeringDurationSeconds);
+        result.decision_path = "GEMINI_3_5_FLASH";
+
+        if (!validVehicleControl(result.car1) ||
+            !validVehicleControl(result.car2)) {
+            logLine("Gemini controls failed SideStep validation; using "
+                    "deterministic braking fallback.");
+            return smartBrakingFallback(first, second);
+        }
+        return result;
+    } catch (const std::exception& error) {
+        logLine(std::string("Gemini integration failed: ") + error.what() +
+                "; using deterministic braking fallback.");
+        return smartBrakingFallback(first, second);
+    }
+#else
+    (void)ttc_seconds;
+    return smartBrakingFallback(first, second);
+#endif
 }
 
 Assessment assessTelemetry(const Telemetry& first_telemetry,
-                           const Telemetry& second_telemetry) {
+                           const Telemetry& second_telemetry,
+                           bool choose_actions = true) {
     Assessment assessment;
     assessment.ready = true;
     assessment.proposal.car1_id = first_telemetry.id;
@@ -502,6 +684,12 @@ Assessment assessTelemetry(const Telemetry& first_telemetry,
 
         assessment.proposal.ttc_seconds = collision.ttc_seconds;
 
+        // EXECUTE/EMERGENCY_STOP still need collision/clear monitoring, but
+        // must not launch another model request for the same event.
+        if (!choose_actions) {
+            return assessment;
+        }
+
         // -----------------------------------------------------------------
         // DEFAULT (if-statement) PATHWAY -- immediate deterministic response.
         // -----------------------------------------------------------------
@@ -510,7 +698,7 @@ Assessment assessTelemetry(const Telemetry& first_telemetry,
                 evaluateDefaultDecision(first, second, collision.ttc_seconds);
         } else {
             assessment.proposal.actions =
-                evaluateSmartDecision(first, second);
+                evaluateSmartDecision(first, second, collision.ttc_seconds);
         }
     } catch (const std::exception& error) {
         assessment.ready = false;
@@ -536,7 +724,7 @@ void resetForScenario(Runtime& runtime, const std::string& scenario_id) {
     runtime.has_pending = false;
     runtime.proposal_transmitted = false;
     runtime.pending = PendingProposal();
-    runtime.execution_action.clear();
+    runtime.execution_control = VehicleControl();
     runtime.execution_ttc = 0.0;
     runtime.clear_timer_active = false;
     runtime.network_send_failure_reported = false;
@@ -627,7 +815,7 @@ void applyAssessment(Runtime& runtime, const Assessment& assessment) {
                 runtime.state = SafetyState::MONITORING;
                 runtime.has_pending = false;
                 runtime.proposal_transmitted = false;
-                runtime.execution_action.clear();
+                runtime.execution_control = VehicleControl();
                 runtime.execution_ttc = 0.0;
                 runtime.clear_timer_active = false;
                 logLine("Collision corridor clear; returning to MONITORING.");
@@ -636,7 +824,7 @@ void applyAssessment(Runtime& runtime, const Assessment& assessment) {
         }
 
         // Once this collision event has a proposal, freeze it and its original
-        // 150 ms deadline. A transient mixed telemetry sample must not cancel or
+        // deadline. A transient mixed telemetry sample must not cancel or
         // indefinitely restart a safety decision already under consensus.
         if (runtime.state == SafetyState::PROPOSING && runtime.has_pending) {
             return;
@@ -654,7 +842,8 @@ void applyAssessment(Runtime& runtime, const Assessment& assessment) {
             runtime.pending = assessment.proposal;
             runtime.has_pending = true;
             runtime.proposal_transmitted = false;
-            runtime.proposal_deadline = now + kConsensusTimeout;
+            runtime.proposal_deadline =
+                now + consensusTimeoutFor(runtime.pending.actions);
             runtime.state = SafetyState::PROPOSING;
             announce = true;
             announced_proposal = assessment.proposal;
@@ -666,8 +855,20 @@ void applyAssessment(Runtime& runtime, const Assessment& assessment) {
         message << "Collision predicted: TTC=" << std::fixed
                 << std::setprecision(3) << announced_proposal.ttc_seconds
                 << "s, path=" << announced_proposal.actions.decision_path
-                << ", proposal=[" << announced_proposal.actions.car1_action
-                << ", " << announced_proposal.actions.car2_action << ']';
+                << ", proposal=[car1(accel="
+                << announced_proposal.actions.car1.acceleration_mps2
+                << "m/s^2, steer="
+                << announced_proposal.actions.car1
+                       .steering_rate_deg_per_second
+                << "deg/s, duration="
+                << announced_proposal.actions.car1.duration_seconds
+                << "s), car2(accel="
+                << announced_proposal.actions.car2.acceleration_mps2
+                << "m/s^2, steer="
+                << announced_proposal.actions.car2
+                       .steering_rate_deg_per_second
+                << "deg/s, duration="
+                << announced_proposal.actions.car2.duration_seconds << "s)]";
         logLine(message.str());
     }
 }
@@ -725,20 +926,30 @@ void processTelemetry(Runtime& runtime, const std::string& payload) {
 
     Telemetry first;
     Telemetry second;
+    bool choose_actions = true;
+    {
+        std::lock_guard<std::mutex> lock(runtime.mutex);
+        if (runtime.state == SafetyState::PROPOSING && runtime.has_pending) {
+            return;
+        }
+        choose_actions = runtime.state != SafetyState::EXECUTE &&
+                         runtime.state != SafetyState::EMERGENCY_STOP;
+    }
     if (!copyFreshPair(runtime, first, second)) {
         return;
     }
-    applyAssessment(runtime, assessTelemetry(first, second));
+    applyAssessment(runtime,
+                    assessTelemetry(first, second, choose_actions));
 }
 
 ExecutionEvent transitionToExecution(Runtime& runtime,
-                                     const std::string& action,
+                                     const VehicleControl& control,
                                      double ttc_seconds,
                                      SafetyState target,
                                      const std::string& reason) {
     ExecutionEvent event;
     runtime.state = target;
-    runtime.execution_action = action;
+    runtime.execution_control = control;
     runtime.execution_ttc = ttc_seconds;
     runtime.execution_started = Clock::now();
     runtime.clear_timer_active = false;
@@ -753,7 +964,7 @@ ExecutionEvent transitionToExecution(Runtime& runtime,
         runtime.proposal_transmitted = false;
     }
     event.occurred = true;
-    event.action = action;
+    event.control = control;
     event.ttc_seconds = ttc_seconds;
     event.reason = reason;
     return event;
@@ -780,10 +991,14 @@ ExecutionEvent processPeerProposal(Runtime& runtime,
 
         if (Clock::now() >= runtime.proposal_deadline) {
             return transitionToExecution(runtime,
-                                         "EMERGENCY_STOP",
+                                         VehicleControl(
+                                             -kEmergencyStopDecelerationMps2,
+                                             0.0,
+                                             kEmergencyStopDurationSeconds),
                                          runtime.pending.ttc_seconds,
                                          SafetyState::EMERGENCY_STOP,
-                                         "150 ms consensus timeout");
+                                         consensusTimeoutReason(
+                                             runtime.pending, false));
         }
 
         const std::string expected_peer =
@@ -814,22 +1029,26 @@ ExecutionEvent processPeerProposal(Runtime& runtime,
             own_proposal_payload) {
         if (runtime.state == SafetyState::PROPOSING && runtime.has_pending &&
             Clock::now() >= runtime.proposal_deadline) {
-            return transitionToExecution(runtime,
-                                         "EMERGENCY_STOP",
+                return transitionToExecution(runtime,
+                                         VehicleControl(
+                                             -kEmergencyStopDecelerationMps2,
+                                             0.0,
+                                             kEmergencyStopDurationSeconds),
                                          runtime.pending.ttc_seconds,
                                          SafetyState::EMERGENCY_STOP,
-                                         "150 ms consensus timeout");
+                                         consensusTimeoutReason(
+                                             runtime.pending, false));
         }
         return ExecutionEvent();
     }
 
     runtime.proposal_transmitted = true;
-    const std::string own_action =
+    const VehicleControl own_control =
         runtime.pending.car1_id == runtime.local_id
-            ? runtime.pending.actions.car1_action
-            : runtime.pending.actions.car2_action;
+            ? runtime.pending.actions.car1
+            : runtime.pending.actions.car2;
     return transitionToExecution(runtime,
-                                 own_action,
+                                 own_control,
                                  runtime.pending.ttc_seconds,
                                  SafetyState::EXECUTE,
                                  "matching peer proposal");
@@ -841,12 +1060,13 @@ ExecutionEvent checkConsensusDeadline(Runtime& runtime) {
         !runtime.has_pending || Clock::now() < runtime.proposal_deadline) {
         return ExecutionEvent();
     }
-    const std::string timeout_reason =
-        runtime.proposal_transmitted
-            ? "150 ms consensus timeout"
-            : "150 ms consensus timeout (local proposal send failed)";
+    const std::string timeout_reason = consensusTimeoutReason(
+        runtime.pending, !runtime.proposal_transmitted);
     return transitionToExecution(runtime,
-                                 "EMERGENCY_STOP",
+                                 VehicleControl(
+                                     -kEmergencyStopDecelerationMps2,
+                                     0.0,
+                                     kEmergencyStopDurationSeconds),
                                  runtime.pending.ttc_seconds,
                                  SafetyState::EMERGENCY_STOP,
                                  timeout_reason);
@@ -858,7 +1078,11 @@ void playWarning(const ExecutionEvent& event, bool enabled) {
     }
 
     std::ostringstream message;
-    message << "ACTION " << event.action << " (" << event.reason
+    message << "CONTROL acceleration=" << event.control.acceleration_mps2
+            << "m/s^2, steering_rate="
+            << event.control.steering_rate_deg_per_second
+            << "deg/s, duration=" << event.control.duration_seconds
+            << "s (" << event.reason
             << ", TTC=" << std::fixed << std::setprecision(3)
             << event.ttc_seconds << "s)";
     logLine(message.str());
@@ -872,14 +1096,15 @@ void playWarning(const ExecutionEvent& event, bool enabled) {
     // /home/qnx/bin/v2v_alert as a GPIO buzzer/LED helper. If an aplay port is
     // installed, the requested WAV warning remains the fallback.
     int alert_status = 0;
-    if (event.action == "SWERVE_LEFT" || event.action == "SWERVE_RIGHT") {
+    if (std::fabs(event.control.steering_rate_deg_per_second) > 0.001) {
         alert_status = std::system(
             "if [ -x /home/qnx/bin/v2v_alert ]; then "
             "/home/qnx/bin/v2v_alert swerve >/dev/null 2>&1 & "
             "elif command -v aplay >/dev/null 2>&1; then "
             "aplay /home/qnx/assets/swerve_warning.wav >/dev/null 2>&1 & "
             "else exit 127; fi");
-    } else if (event.action == "EMERGENCY_STOP") {
+    } else if (event.control.acceleration_mps2 <=
+               -kEmergencyStopDecelerationMps2) {
         alert_status = std::system(
             "if [ -x /home/qnx/bin/v2v_alert ]; then "
             "/home/qnx/bin/v2v_alert emergency_stop >/dev/null 2>&1 & "

@@ -92,16 +92,17 @@ All messages are UTF-8 CSV datagrams on UDP `12345`:
 
 ```text
 TELEMETRY,car_id,latitude,longitude,heading,speed,width,length,state_or_scenario
-PROPOSAL,sender_id,car_1_intended_action,car_2_intended_action
-EXECUTION,car_id,action,state,ttc
+PROPOSAL,sender_id,car_1_acceleration,car_1_steering_rate,car_1_duration,car_2_acceleration,car_2_steering_rate,car_2_duration
+EXECUTION,car_id,acceleration,steering_rate,duration,state,ttc
 RESET,scenario_id
 ```
 
 `car_1` and `car_2` in a proposal are the lexicographically ordered IDs, so both
 Pis calculate the same right/left assignment. Proposals repeat at 20 Hz until a
-match or the 150 ms deadline. A match enters `EXECUTE`; a timeout enters
-`EMERGENCY_STOP`. Execution packets repeat for reliable visualization despite
-UDP packet loss.
+match or the deadline. Deterministic decisions use 150 ms; Gemini decisions use
+20.5 seconds to tolerate the two peers' independent cloud calls with a 20-second
+request timeout. A match enters `EXECUTE`; a timeout enters `EMERGENCY_STOP`.
+Execution packets repeat for reliable visualization despite UDP packet loss.
 
 ## Decision behavior
 
@@ -110,13 +111,40 @@ UDP packet loss.
 - Every Start/Restart uses a new scenario tag. Each Pi clears its prior
   proposal, execution action, and cached car pair before evaluating that tag.
 - At TTC below 3 seconds, both cars brake only when both stopping-distance
-  checks pass. Otherwise canonical car 1 swerves right and car 2 swerves left.
-- At TTC of 3 seconds or more, `evaluateSmartDecision(Car, Car)` is the explicit
-  onboard-model integration point. The PoC stub reports the smart path and
-  returns conservative braking for both cars.
-- Matching proposals trigger the local execution state and action-specific
+  checks pass. Otherwise canonical car 1 receives a positive steering rate and
+  car 2 a negative steering rate for 2.2 seconds.
+- At TTC of 3 seconds or more,
+  `evaluateSmartDecision(Car, Car, ttc_seconds)` is the explicit
+  model integration point. The default build returns conservative braking. A
+  build with `ENABLE_GEMINI=1` maps the live canonical car pair into the Gemini
+  client and maps its structured response back into `JointActions`.
+- Matching proposals trigger the local execution state and control-specific
   warning audio. The browser applies that same execution packet to its simulated
   motion.
+
+## Optional Gemini integration
+
+The normal build has no cloud dependency and uses the deterministic smart-path
+fallback. On the development Mac, build against the adjacent Gemini client with:
+
+```bash
+cd qnx-brain
+make clean
+make ENABLE_GEMINI=1 GEMINI_DIR="../../../Gemma 3"
+GEMINI_API_KEY="your-key" ./v2v_brain --id CAR1 --peer CAR2
+```
+
+The enabled build passes the live canonical car pair and computed TTC directly
+to `GeminiClient`; it does not run the demo `collision_ai` executable because
+that executable currently contains a hardcoded vehicle scenario. Gemini calls
+use a 20-second request timeout and fall back to deterministic braking on missing
+credentials, timeout, client failure, or controls rejected by SideStep.
+
+The provided default include and link flags target Homebrew on Apple Silicon.
+A QNX build requires QNX-compatible libcurl and nlohmann-json installations and
+appropriate `GEMINI_CPPFLAGS` and `GEMINI_LDLIBS` overrides. Cloud latency and
+independent model nondeterminism must be tested before treating this pathway as
+safety-capable; SideStep still requires matching peer proposals before execute.
 
 This is a demonstration, not a production automotive safety controller. It has
 no authenticated transport, clock synchronization, redundant sensing, vehicle

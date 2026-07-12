@@ -50,13 +50,23 @@ Coordinates are decimal degrees, heading is degrees clockwise from north, speed 
 The primary packets consumed from the Pis are:
 
 ```text
-PROPOSAL,sender_id,car_1_action,car_2_action
-EXECUTION,car_id,action,state,ttc
+PROPOSAL,sender_id,car_1_acceleration,car_1_steering_rate,car_1_duration,car_2_acceleration,car_2_steering_rate,car_2_duration
+EXECUTION,car_id,acceleration,steering_rate,duration,state,ttc
 ```
 
-Proposal actions are in canonical vehicle-ID order (`CAR1`, then `CAR2`). Two recent, identical proposals from different senders display as matched consensus. An execution packet immediately applies its action to the named canvas vehicle. `BRAKE` and `EMERGENCY_STOP` decelerate and turn the vehicle red; `SWERVE_LEFT` and `SWERVE_RIGHT` animate opposite heading changes.
+Proposal controls are in canonical vehicle-ID order (`CAR1`, then `CAR2`). Two recent, identical proposals from different senders display as matched consensus. The display retains proposals for 20.5 seconds so it can visualize the optional Gemini pathway's 20-second request timeout; the QNX brains enforce the authoritative decision-specific deadline. An execution packet applies its acceleration and steering rate to the named canvas vehicle for the supplied duration.
 
 For compatibility with early PoC builds, the parser also tolerates `EXECUTE`, `STATUS`, `STATE`, `TTC`, and joint `EXECUTION,sender_id,car_1_action,car_2_action` packets. Unknown or malformed fields are ignored rather than interpreted.
+
+For a browser-only animation regression test using the Gemini client's current
+deterministic example control, open:
+
+```text
+http://localhost:8000/?testControls=gemini-fallback
+```
+
+Starting the default scenario immediately applies `-8.000 m/s²`, `0.000°/s`
+for `1.500 s` to both cars through the same continuous-control execution path.
 
 ## Loop behavior
 
